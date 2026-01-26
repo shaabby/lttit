@@ -1,52 +1,89 @@
-# Prerequisites
-*.d
+# -----------------------------
+# JetBrains / CLion
+# -----------------------------
+**/.idea/
+**/.cmake/
+**/cmake-build-*/
+**/cmake-build-debug*/
+**/cmake-build-release*/
 
-# Object files
+# -----------------------------
+# CMake
+# -----------------------------
+**/CMakeFiles/
+**/CMakeCache.txt
+**/cmake_install.cmake
+**/Makefile
+**/Testing/
+**/CTestTestfile.cmake
+
+# -----------------------------
+# STM32CubeMX
+# -----------------------------
+*.launch
+*.uvoptx
+*.uvprojx
+*.mxproject
+*.ioc
+
+# CubeMX backup files
+Core/Inc/*.bak
+Core/Src/*.bak
+
+# -----------------------------
+# Build artifacts
+# -----------------------------
 *.o
-*.ko
 *.obj
 *.elf
-
-# Linker output
-*.ilk
-*.map
-*.exp
-
-# Precompiled Headers
-*.gch
-*.pch
-
-# Libraries
-*.lib
-*.a
-*.la
-*.lo
-
-# Shared objects (inc. Windows DLLs)
-*.dll
-*.so
-*.so.*
-*.dylib
-
-# Executables
-*.exe
-*.out
-*.app
-*.i*86
-*.x86_64
+*.bin
 *.hex
-
-# Debug files
-*.dSYM/
+*.map
+*.lst
+*.d
 *.su
-*.idb
-*.pdb
+*.a
+*.out
 
-# Kernel Module Compile Results
-*.mod*
-*.cmd
-.tmp_versions/
-modules.order
-Module.symvers
-Mkfile.old
-dkms.conf
+# -----------------------------
+# Debugger / ST-Link
+# -----------------------------
+*.stlink
+*.svd
+*.log
+
+# -----------------------------
+# OS / Editor junk
+# -----------------------------
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*.tmp
+
+# -----------------------------
+# Python
+# -----------------------------
+__pycache__/
+*.pyc
+
+# -----------------------------
+# lttit framework outputs
+# -----------------------------
+**/build/
+**/out/
+**/bin/
+
+# -----------------------------
+# Demo outputs (nodeA/nodeB/nodeC)
+# -----------------------------
+demo/**/build/
+demo/**/out/
+demo/**/bin/
+
+# -----------------------------
+# Optional: FS images
+# -----------------------------
+*.fsimg
+*.flash
+*.dump
