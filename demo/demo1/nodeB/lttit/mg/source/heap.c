@@ -150,3 +150,25 @@ static void insert_free_block(struct heap_node *node)
         iter->next = node->next;
     }
 }
+
+struct heap_stats heap_get_stats(void)
+{
+    struct heap_stats st = {0};
+
+    st.remain_size = the_heap.all_size;
+
+    struct heap_node *node = the_heap.head.next;
+
+    while (node) {
+        st.free_size_iter += node->block_size;
+
+        if (node->block_size > st.max_free_block)
+            st.max_free_block = node->block_size;
+
+        st.free_blocks++;
+
+        node = node->next;
+    }
+
+    return st;
+}

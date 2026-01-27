@@ -19,7 +19,7 @@ struct rb_node {
     uint8_t rb_color;
     struct rb_node *rb_right;
     struct rb_node *rb_left;
-    uint64_t value;
+    uint32_t value;
 };
 
 struct rb_root {

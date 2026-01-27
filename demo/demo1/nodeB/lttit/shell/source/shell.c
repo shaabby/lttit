@@ -4,6 +4,7 @@
 #include "vim.h"
 #include "fs.h"
 #include "comm.h"
+#include "schedule.h"
 #include "heap.h"
 
 static char linebuf[SHELL_MAX_LINE];
@@ -129,20 +130,17 @@ int shell_readline(char *buf, int max)
         }
     }
 }
-
 void shell_main(void)
 {
-    while (1) {
-        comm_write("> ", 2);
+    comm_write("> ", 2);
 
-        int len = shell_readline(linebuf, SHELL_MAX_LINE);
-        if (len <= 0) continue;
+    int len = shell_readline(linebuf, SHELL_MAX_LINE);
+    if (len <= 0) return;
 
-        int argc = shell_parse(linebuf, argv_buf, SHELL_MAX_ARGS);
-        if (argc == 0) continue;
+    int argc = shell_parse(linebuf, argv_buf, SHELL_MAX_ARGS);
+    if (argc == 0) return;
 
-        shell_exec(argc, argv_buf);
-    }
+    shell_exec(argc, argv_buf);
 }
 
 int shell_parse(char *line, char **argv, int max)
@@ -312,6 +310,62 @@ int cmd_sync(int argc, char **argv)
     return 0;
 }
 
+int cmd_mem(int argc, char **argv)
+{
+    struct heap_stats st = heap_get_stats();
+
+    char buf[128];
+    snprintf(buf, sizeof(buf),
+             "heap_remain: %u\r\n"
+             "heap_free_iter: %u\r\n"
+             "heap_max_block: %u\r\n"
+             "heap_free_blocks: %u\r\n",
+             st.remain_size,
+             st.free_size_iter,
+             st.max_free_block,
+             st.free_blocks);
+
+    comm_write(buf, strlen(buf));
+    return 0;
+}
+
+
+
+int cmd_ps(int argc, char **argv)
+{
+    char buf[160];
+    struct task_info info;
+
+    comm_write("PID   STATE      STACK_USED   PERIOD   DEADLINE\r\n", 52);
+
+    for (uint32_t pid = 1; pid < TASK_COUNT; pid++) {
+
+        if (rtos_get_task_info(pid, &info) != 0)
+            continue;
+
+        const char *state_str =
+                (info.state == RUNNING)  ? "RUNNING"  :
+                (info.state == Ready)    ? "READY"    :
+                (info.state == Delay)  ? "DELAYED"  :
+                (info.state == Suspend)? "SUSPEND"  :
+                (info.state == Dead)  ? "DELETED"  :
+                "UNKNOWN";
+
+        snprintf(buf, sizeof(buf),
+                 "%-5u %-10s %-12u %-8u %-8u\r\n",
+                 info.pid,
+                 state_str,
+                 info.stack_watermark,
+                 info.period,
+                 info.deadline);
+
+        comm_write(buf, strlen(buf));
+    }
+
+    return 0;
+}
+
+
 struct cmd_entry {
     const char *name;
     int (*func)(int argc, char **argv);
@@ -324,6 +378,8 @@ static struct cmd_entry cmd_table[] = {
         {"vim",  cmd_vim},
         {"cd",    cmd_cd},
         {"sync",    cmd_sync},
+        {"mem", cmd_mem},
+        {"ps", cmd_ps},
         {NULL, NULL}
 };
 

@@ -43,7 +43,7 @@ uint8_t mutex_lock(mutex_handle m, uint32_t ticks)
     uint8_t prio;
     uint8_t volatile pend;
 
-    key = xEnterCritical();
+    key = EnterCritical();
     cur = GetCurrentTCB();
     prio = GetRespondLine(cur);
 
@@ -51,12 +51,12 @@ uint8_t mutex_lock(mutex_handle m, uint32_t ticks)
         m->original_priority = prio;
         m->owner = cur;
         m->value--;
-        xExitCritical(key);
+        ExitCritical(key);
         return 1;
     }
 
     if (ticks == 0) {
-        xExitCritical(key);
+        ExitCritical(key);
         return 0;
     }
 
@@ -71,16 +71,16 @@ uint8_t mutex_lock(mutex_handle m, uint32_t ticks)
             SetRespondLine(m->owner, prio);
     }
 
-    xExitCritical(key);
+    ExitCritical(key);
 
     while (pend == schedule_PendSV)
         ;
 
-    key = xEnterCritical();
+    key = EnterCritical();
 
     if (!CheckIPCState(cur)) {
         Remove_IPC(cur);
-        xExitCritical(key);
+        ExitCritical(key);
         return 0;
     }
 
@@ -88,7 +88,7 @@ uint8_t mutex_lock(mutex_handle m, uint32_t ticks)
     m->owner = cur;
     m->value--;
 
-    xExitCritical(key);
+    ExitCritical(key);
     return 1;
 }
 
@@ -99,7 +99,7 @@ uint8_t mutex_unlock(mutex_handle m)
     uint8_t owner_prio;
     uint8_t cur_prio;
 
-    key = xEnterCritical();
+    key = EnterCritical();
     cur = GetCurrentTCB();
 
     owner_prio = GetRespondLine(m->owner);
@@ -121,6 +121,6 @@ uint8_t mutex_unlock(mutex_handle m)
 
     m->value++;
 
-    xExitCritical(key);
+    ExitCritical(key);
     return 1;
 }

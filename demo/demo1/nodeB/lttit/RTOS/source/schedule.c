@@ -1,6 +1,7 @@
 #include "schedule.h"
 #include "heap.h"
 #include "port.h"
+#include "hashmap.h"
 #include "rbtree.h"
 #include "atomic.h"
 #include "macro.h"
@@ -20,12 +21,14 @@ struct rb_root *WakeTicksTree;
 struct rb_root *OverWakeTicksTree;
 struct rb_root SuspendTree;
 struct rb_root DeleteTree;
+struct hashmap pid_map;
 
 volatile uint32_t NowTickCount = 0;
-volatile uint64_t AbsoluteClock;
+static uint32_t next_pid = 1;
 
 struct TCB_t {
     volatile uint32_t *pxTopOfStack;
+    uint32_t pid;
     struct rb_node task_node;
     struct rb_node IPC_node;
     uint16_t period;
@@ -34,6 +37,8 @@ struct TCB_t {
     uint32_t EnterTime;
     uint32_t ExitTime;
     uint32_t SmoothTime;
+    uint32_t stack_mem;
+    uint32_t max_used_mem;
     uint32_t *pxStack;
 };
 
@@ -47,6 +52,11 @@ TaskHandle_t GetCurrentTCB(void)
 uint8_t GetRespondLine(TaskHandle_t self)
 {
     return self->respondLine;
+}
+
+uint32_t task_pid_alloc(void)
+{
+    return next_pid++;
 }
 
 TaskHandle_t TaskFirstRespond(rb_root_handle root)
@@ -72,8 +82,8 @@ uint8_t SetRespondLine(TaskHandle_t self, uint8_t respondLine)
 static void ReadyTreeAdd(struct rb_node *node)
 {
     TaskHandle_t self = container_of(node, struct TCB_t, task_node);
-
-    node->value = AbsoluteClock + self->respondLine;
+    node->root = &ReadyTree;
+    node->value = NowTickCount + self->respondLine;
     rb_insert_node(&ReadyTree, node);
 }
 
@@ -84,6 +94,7 @@ static void ReadyTreeRemove(struct rb_node *node)
 
 static void SuspendTreeAdd(struct rb_node *node)
 {
+    node->root = &SuspendTree;
     rb_insert_node(&SuspendTree, node);
 }
 
@@ -121,7 +132,7 @@ void TaskTreeRemove(TaskHandle_t self, uint8_t State)
 void Insert_IPC(TaskHandle_t self, struct rb_root *root)
 {
     self->IPC_node.root = root;
-    self->IPC_node.value = AbsoluteClock + self->respondLine;
+    self->IPC_node.value = NowTickCount + self->respondLine;
     rb_insert_node(root, &self->IPC_node);
 }
 
@@ -142,11 +153,22 @@ uint8_t CheckIPCState(TaskHandle_t taskHandle)
     return taskHandle->IPC_node.root == NULL;
 }
 
-uint8_t volatile schedule_PendSV;
+void rtos_stack_used(TaskHandle_t tcb)
+{
+    uint8_t *stack_end = (uint8_t *)tcb->pxStack + tcb->stack_mem;
+    size_t used = (size_t)(stack_end - (uint8_t *)tcb->pxTopOfStack);
+    if (used > tcb->max_used_mem) {
+        tcb->max_used_mem = used;
+    }
+}
 
+uint8_t volatile schedule_PendSV;
 void TaskSwitchContext(void)
 {
     schedule_PendSV++;
+    if (schedule_currentTCB) {
+        rtos_stack_used(schedule_currentTCB);
+    }
     schedule_currentTCB = TaskFirstRespond(&ReadyTree);
 }
 
@@ -157,10 +179,13 @@ void RecordWakeTime(uint16_t ticks)
 
     self->task_node.value = constTicks + ticks;
 
-    if (self->task_node.value < constTicks)
+    if (self->task_node.value < constTicks) {
+        self->task_node.root = OverWakeTicksTree;
         rb_insert_node(OverWakeTicksTree, &self->task_node);
-    else
+    } else {
+        self->task_node.root = WakeTicksTree;
         rb_insert_node(WakeTicksTree, &self->task_node);
+    }
 }
 
 void TaskDelay(uint16_t ticks)
@@ -172,7 +197,7 @@ void TaskDelay(uint16_t ticks)
     }
 }
 
-void TaskCreate(TaskFunction_t TaskCode,
+uint32_t TaskCreate(TaskFunction_t TaskCode,
                 uint16_t StackDepth,
                 void *Parameters,
                 uint16_t period,
@@ -183,21 +208,21 @@ void TaskCreate(TaskFunction_t TaskCode,
     uint32_t *topStack;
     uint32_t *pxStack;
     struct TCB_t *NewTcb;
-
-    pxStack = (uint32_t *)heap_malloc((size_t)StackDepth *
-                                      sizeof(uint32_t *));
+    size_t stack_mem = (size_t)StackDepth * sizeof(uintptr_t);
+    pxStack = (uint32_t *)heap_malloc(stack_mem);
     NewTcb = heap_malloc(sizeof(*NewTcb));
 
     *self = NewTcb;
-
     *NewTcb = (struct TCB_t){
             .period = period,
             .respondLine = respondLine,
             .deadline = deadline,
             .SmoothTime = 0,
-            .pxStack = pxStack
+            .stack_mem = stack_mem,
+            .pxStack = pxStack,
+            .pid = task_pid_alloc(),
     };
-
+    hashmap_put(&pid_map, (void *)(uintptr_t)NewTcb->pid, NewTcb);
     topStack = NewTcb->pxStack + (StackDepth - 1);
     topStack = (uint32_t *)((uint32_t)topStack &
                             ~(uint32_t)alignment_byte);
@@ -208,11 +233,14 @@ void TaskCreate(TaskFunction_t TaskCode,
     rb_node_init(&NewTcb->IPC_node);
 
     TaskTreeAdd(NewTcb, Ready);
+    return NewTcb->pid;
 }
 
 void TaskDelete(TaskHandle_t self)
 {
+    hashmap_remove(&pid_map, (void *)(uintptr_t)self->pid);
     TaskTreeRemove(self, Ready);
+    self->task_node.root = &DeleteTree;
     rb_insert_node(&DeleteTree, &self->task_node);
     schedule();
 }
@@ -221,7 +249,7 @@ uint32_t TaskEnter(void)
 {
     struct TCB_t *self = schedule_currentTCB;
 
-    self->EnterTime = AbsoluteClock;
+    self->EnterTime = NowTickCount;
     return self->EnterTime;
 }
 
@@ -230,7 +258,7 @@ uint32_t TaskExit(void)
     struct TCB_t *self = schedule_currentTCB;
     uint32_t newPeriod;
 
-    self->ExitTime = AbsoluteClock;
+    self->ExitTime = NowTickCount;
     newPeriod = self->ExitTime - self->EnterTime;
 
     if (self->SmoothTime != 0)
@@ -281,7 +309,7 @@ void leisureTask(void)
     }
 }
 
-uint64_t MaxRespondLine = (uint64_t)~0;
+uint32_t MaxRespondLine = (uint32_t)~0;
 
 void LeisureTaskCreat(void)
 {
@@ -299,6 +327,7 @@ void LeisureTaskCreat(void)
 void SchedulerInit(void)
 {
     ADTTreeInit();
+    hashmap_init(&pid_map, TASK_COUNT, HASHMAP_KEY_INT);
     TreeDelayInit();
     LeisureTaskCreat();
 }
@@ -320,7 +349,6 @@ void CheckTicks(void)
 {
     struct rb_node *n;
 
-    AbsoluteClock++;
     NowTickCount++;
 
     if (SusPend) {
@@ -344,4 +372,41 @@ void CheckTicks(void)
                 schedule();
         }
     }
+}
+
+
+uint8_t get_task_state(TaskHandle_t tcb)
+{
+    if (tcb == schedule_currentTCB)
+        return RUNNING;
+
+    if (tcb->task_node.root == &ReadyTree)
+        return Ready;
+
+    if (tcb->task_node.root == WakeTicksTree ||
+        tcb->task_node.root == OverWakeTicksTree)
+        return Delay;
+
+    if (tcb->task_node.root == &SuspendTree)
+        return Suspend;
+
+    if (tcb->task_node.root == &DeleteTree)
+        return Dead;
+
+    return Suspend;
+}
+
+int rtos_get_task_info(uint32_t pid, struct task_info *out)
+{
+    TaskHandle_t tcb = hashmap_get(&pid_map, (void *)(uintptr_t)pid);
+    if (!tcb)
+        return -1;
+
+    out->pid = tcb->pid;
+    out->stack_watermark = tcb->max_used_mem;
+    out->period = tcb->period;
+    out->deadline = tcb->deadline;
+    out->state = get_task_state(tcb);
+
+    return 0;
 }

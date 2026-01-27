@@ -1,6 +1,7 @@
 #include "timer.h"
 #include "heap.h"
 #include "compare.h"
+#include "port.h"
 #include "macro.h"
 
 struct timer_obj {
@@ -16,17 +17,17 @@ extern uint32_t NowTickCount;
 
 static void clock_tree_add(struct timer_obj *t)
 {
-    uint32_t key = xEnterCritical();
+    uint32_t key = EnterCritical();
     t->node.value = NowTickCount + t->period;
     rb_insert_node(&clock_tree, &t->node);
-    xExitCritical(key);
+    ExitCritical(key);
 }
 
 static void clock_tree_remove(struct timer_obj *t)
 {
-    uint32_t key = xEnterCritical();
+    uint32_t key = EnterCritical();
     rb_remove_node(&clock_tree, &t->node);
-    xExitCritical(key);
+    ExitCritical(key);
 }
 
 static void timer_check(void)

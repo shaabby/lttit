@@ -13,8 +13,9 @@
 //if a task is Dead, the leisure task will delete it.
 #define Ready       0
 #define Suspend     1
-#define Dead        3
-#define Delay       4
+#define Dead        2
+#define Delay       3
+#define RUNNING     4
 
 
 #define configSysTickClockHz			( ( unsigned long ) 72000000 )
@@ -23,18 +24,19 @@
 #define configShieldInterPriority 191
 
 
-
+#define TASK_COUNT 10
 
 typedef void (* TaskFunction_t)(void *);
 typedef  struct TCB_t         *TaskHandle_t;
 
-void TaskCreate(TaskFunction_t TaskCode,
-                uint16_t StackDepth,
-                void *Parameters,
-                uint16_t period,
-                uint8_t respondLine,
-                uint16_t deadline,
-                TaskHandle_t *self);
+
+uint32_t TaskCreate(TaskFunction_t TaskCode,
+                    uint16_t StackDepth,
+                    void *Parameters,
+                    uint16_t period,
+                    uint8_t respondLine,
+                    uint16_t deadline,
+                    TaskHandle_t *self);
 
 void TaskDelete(TaskHandle_t self);
 void TaskDelay(uint16_t ticks);
@@ -60,11 +62,18 @@ TaskHandle_t GetCurrentTCB(void);
 uint8_t GetRespondLine(TaskHandle_t self);
 
 uint8_t SetRespondLine(TaskHandle_t self, uint8_t respondLine);
-
-
 void CheckTicks(void);
 
-uint32_t xEnterCritical();
-void xExitCritical(uint32_t xre);
+
+struct task_info {
+    uint32_t pid;
+    uint32_t stack_watermark;
+    uint32_t period;
+    uint32_t deadline;
+    uint8_t  state;
+};
+
+int rtos_get_task_info(uint32_t pid, struct task_info *out);
+
 
 #endif

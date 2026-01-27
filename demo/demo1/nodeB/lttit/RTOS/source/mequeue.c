@@ -107,23 +107,23 @@ uint8_t queue_send(struct queue_struct *q, uint32_t *buf, uint32_t ticks)
     uint8_t prio;
     uint8_t volatile pend;
 
-    key = xEnterCritical();
+    key = EnterCritical();
     cur = GetCurrentTCB();
     prio = GetRespondLine(cur);
 
     if (q->msg_num < q->node_num) {
         write_to_queue(q, buf, prio);
-        xExitCritical(key);
+        ExitCritical(key);
         return 1;
     }
 
     if (q->msg_num == q->node_num) {
         if (!ticks) {
-            xExitCritical(key);
+            ExitCritical(key);
             return 0;
         }
     } else {
-        xExitCritical(key);
+        ExitCritical(key);
         return 0;
     }
 
@@ -134,20 +134,20 @@ uint8_t queue_send(struct queue_struct *q, uint32_t *buf, uint32_t ticks)
         TaskDelay(ticks);
     }
 
-    xExitCritical(key);
+    ExitCritical(key);
 
     while (pend == schedule_PendSV)
         ;
 
-    key = xEnterCritical();
+    key = EnterCritical();
 
     if (!CheckIPCState(cur)) {
-        xExitCritical(key);
+        ExitCritical(key);
         return 0;
     }
 
     write_to_queue(q, buf, prio);
-    xExitCritical(key);
+    ExitCritical(key);
 
     return 1;
 }
@@ -159,19 +159,19 @@ uint8_t queue_receive(struct queue_struct *q, uint32_t *buf, uint32_t ticks)
     uint8_t prio;
     uint8_t volatile pend;
 
-    key = xEnterCritical();
+    key = EnterCritical();
     cur = GetCurrentTCB();
     prio = GetRespondLine(cur);
 
     if (q->msg_num > 0) {
         extract_from_queue(q, buf, prio);
-        xExitCritical(key);
+        ExitCritical(key);
         return 1;
     }
 
     if (q->msg_num == 0) {
         if (!ticks) {
-            xExitCritical(key);
+            ExitCritical(key);
             return 0;
         }
     }
@@ -183,21 +183,21 @@ uint8_t queue_receive(struct queue_struct *q, uint32_t *buf, uint32_t ticks)
         TaskDelay(ticks);
     }
 
-    xExitCritical(key);
+    ExitCritical(key);
 
     while (pend == schedule_PendSV)
         ;
 
-    key = xEnterCritical();
+    key = EnterCritical();
 
     if (!CheckIPCState(cur)) {
         Remove_IPC(cur);
-        xExitCritical(key);
+        ExitCritical(key);
         return 0;
     }
 
     extract_from_queue(q, buf, prio);
-    xExitCritical(key);
+    ExitCritical(key);
 
     return 1;
 }

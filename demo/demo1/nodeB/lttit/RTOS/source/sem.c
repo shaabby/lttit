@@ -35,7 +35,7 @@ uint8_t semaphore_release(semaphore_handle sem)
     TaskHandle_t cur;
     uint8_t prio;
 
-    key = xEnterCritical();
+    key = EnterCritical();
     cur = GetCurrentTCB();
     prio = GetRespondLine(cur);
 
@@ -52,7 +52,7 @@ uint8_t semaphore_release(semaphore_handle sem)
 
     sem->value++;
 
-    xExitCritical(key);
+    ExitCritical(key);
     return 1;
 }
 
@@ -62,17 +62,17 @@ uint8_t semaphore_take(semaphore_handle sem, uint32_t ticks)
     TaskHandle_t cur;
     uint8_t volatile pend;
 
-    key = xEnterCritical();
+    key = EnterCritical();
     cur = GetCurrentTCB();
 
     if (sem->value > 0) {
         sem->value--;
-        xExitCritical(key);
+        ExitCritical(key);
         return 1;
     }
 
     if (ticks == 0) {
-        xExitCritical(key);
+        ExitCritical(key);
         return 0;
     }
 
@@ -83,21 +83,21 @@ uint8_t semaphore_take(semaphore_handle sem, uint32_t ticks)
         TaskDelay(ticks);
     }
 
-    xExitCritical(key);
+    ExitCritical(key);
 
     while (pend == schedule_PendSV)
         ;
 
-    key = xEnterCritical();
+    key = EnterCritical();
 
     if (!CheckIPCState(cur)) {
         Remove_IPC(cur);
-        xExitCritical(key);
+        ExitCritical(key);
         return 0;
     }
 
     sem->value--;
-    xExitCritical(key);
+    ExitCritical(key);
 
     return 1;
 }

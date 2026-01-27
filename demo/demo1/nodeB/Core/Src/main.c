@@ -64,6 +64,7 @@ void SystemClock_Config(void);
 #include "fs_port.h"
 #include "shell.h"
 #include "comm.h"
+#include "heap.h"
 #include <stdio.h>
 
 TaskHandle_t t1;
@@ -82,9 +83,10 @@ void task_shell(void *ctx)
 
 void APP()
 {
-    TaskCreate(task_shell, 256,
+    uint32_t pid = TaskCreate(task_shell, 256,
                NULL, 0, 10, 2000,
                &t1);
+    printf("pid:%u\r\n", pid);
 }
 
 int main(void)
