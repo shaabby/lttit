@@ -22,7 +22,7 @@ static struct dinode DInodeArray[DINODE_COUNT];
 
 void bitmap_init(uint32_t *bitmap, uint32_t count)
 {
-    for(uint32_t i = 0; i < count; i++) {
+    for (uint32_t i = 0; i < count; i++) {
         bitmap[i] = ~0;
     }
 }
@@ -64,7 +64,6 @@ int block_alloc(void)
     return blk;
 }
 
-
 int block_free(uint32_t blk)
 {
     bitmap_set_free(BlockBitmap, blk);
@@ -76,7 +75,6 @@ int block_write(uint32_t blk, uint32_t off, const void *buf, uint32_t size)
     return g_bdev->write(g_bdev->ctx, blk, off, buf, size);
 }
 
-
 int inode_alloc(struct inode **out)
 {
     int i = bitmap_find_free(InodeBitmap, INODE_BITMAP_COUNT);
@@ -85,7 +83,8 @@ int inode_alloc(struct inode **out)
 
     struct inode *ino = heap_malloc(sizeof(struct inode));
     if (!ino) return -1;
-    ino->ino = i;
+    ino->ino = (uint32_t)i;
+    ino->din = DInodeArray[i];
     ino->refcnt = 1;
     *out = ino;
     return 0;
@@ -96,7 +95,6 @@ int inode_free(struct inode *inode)
     heap_free(inode);
     return 0;
 }
-
 
 int fs_mount(struct superblock *sb, struct fs_blkdev *bdev)
 {
@@ -111,7 +109,10 @@ int fs_mount(struct superblock *sb, struct fs_blkdev *bdev)
         return -1;
     if (g_bdev->read(g_bdev->ctx, 3, 0, DInodeArray, sizeof(DInodeArray)) != 0)
         return -1;
+
     g_root = heap_malloc(sizeof(struct inode));
+    if (!g_root)
+        return -1;
     g_root->ino = 0;
     g_root->refcnt = 1;
     g_root->din = DInodeArray[0];
@@ -153,7 +154,7 @@ int fs_format(struct superblock *sb)
 
     inode_alloc(&g_root);
     g_root->din.size = sb->block_size;
-    g_root->din.direct[0] = block_alloc();
+    g_root->din.direct[0] = (uint32_t)block_alloc();
     DInodeArray[g_root->ino] = g_root->din;
 
     if (g_bdev->write(g_bdev->ctx, 0, 0, sb, sizeof(struct superblock))) {
@@ -189,6 +190,7 @@ int fs_sync(void)
 
 #define DIR_COUNT_MAX (FS_BLOCK_SIZE / sizeof(struct dirent))
 static struct dirent ents[DIR_COUNT_MAX];
+
 int dir_is_exist(uint32_t blk, char *token, struct dirent *out)
 {
     memset(ents, 0, sizeof(ents));
@@ -208,7 +210,6 @@ int dir_is_exist(uint32_t blk, char *token, struct dirent *out)
 
     return 0;
 }
-
 
 int dir_creat(uint32_t blk, char *token, uint32_t size)
 {
@@ -269,9 +270,9 @@ int dir_lookup(struct inode *dir, const char *name, struct dirent *out)
     return 0;
 }
 
-
 #define PATH_LEN_MAX  64
 static char path_copy[PATH_LEN_MAX];
+
 int fs_mkdir(const char *path, struct inode **ino)
 {
     if (path == NULL || path[0] == '/') {
@@ -285,50 +286,60 @@ int fs_mkdir(const char *path, struct inode **ino)
     char *saveptr;
     char *token = strtok_r(path_copy, "/", &saveptr);
 
-    struct inode *cur = heap_malloc(sizeof(struct inode));
-    *cur = *g_root;
-    struct inode *parent = NULL;
+    struct inode cur;
+    cur = *g_root;
+    struct inode parent;
     struct dirent dir;
 
     while (token) {
         parent = cur;
-        *ino = parent;
-        uint32_t data_blk = parent->din.direct[0];
+        uint32_t data_blk = parent.din.direct[0];
 
-        if (dir_is_exist(data_blk, token, &dir)) {
-            cur->din = DInodeArray[dir.ino];
-            cur->ino = dir.ino;
+        int exist = dir_is_exist(data_blk, token, &dir);
+        if (exist < 0)
+            return -1;
+
+        if (exist == 1) {
+            cur.din = DInodeArray[dir.ino];
+            cur.ino = dir.ino;
             token = strtok_r(NULL, "/", &saveptr);
-            *ino = cur;
             continue;
         }
 
         break;
     }
 
-    if (!token) return 0;
+    if (!token) {
+        /* path already exists, return a heap inode for caller */
+        struct inode *res;
+        if (inode_alloc(&res) < 0)
+            return -1;
+        res->ino = cur.ino;
+        res->din = cur.din;
+        *ino = res;
+        return 0;
+    }
 
-    struct inode *new_inode;
+    struct inode *new_inode = NULL;
     while (token) {
-        if (inode_alloc(&new_inode)) {
+        if (inode_alloc(&new_inode) < 0) {
             return -1;
         }
 
-        uint32_t blk = block_alloc();
+        uint32_t blk = (uint32_t)block_alloc();
         new_inode->din.direct[0] = blk;
         DInodeArray[new_inode->ino] = new_inode->din;
 
-        if (dir_add_entry(parent, token, new_inode->ino, FILE_TYPE_DIR) < 0)
+        if (dir_add_entry(&parent, token, new_inode->ino, FILE_TYPE_DIR) < 0)
             return -1;
 
-        parent = new_inode;
-
+        parent = *new_inode;
         token = strtok_r(NULL, "/", &saveptr);
     }
+
     *ino = new_inode;
     return 0;
 }
-
 
 int fs_rmdir(struct superblock *sb, const char *path)
 {
@@ -352,25 +363,28 @@ static int fs_lookup_path(const char *path, struct inode **out)
     char *save_ptr;
     char *token = strtok_r(tmp, "/", &save_ptr);
 
-    struct inode *cur = heap_malloc(sizeof(struct inode));
-    if (!cur) return -1;
-    *cur = *g_root;
+    struct inode cur;
+    cur = *g_root;
 
     struct dirent de;
 
     while (token) {
-        if (!dir_lookup(cur, token, &de)) {
-            heap_free(cur);
+        if (!dir_lookup(&cur, token, &de)) {
             return -1;
         }
 
-        cur->din = DInodeArray[de.ino];
-        cur->ino = de.ino;
+        cur.din = DInodeArray[de.ino];
+        cur.ino = de.ino;
 
         token = strtok_r(NULL, "/", &save_ptr);
     }
 
-    *out = cur;
+    struct inode *res;
+    if (inode_alloc(&res) < 0)
+        return -1;
+    res->ino = cur.ino;
+    res->din = cur.din;
+    *out = res;
     return 0;
 }
 
@@ -422,6 +436,7 @@ static void split_path(const char *path, char *parent, char *name)
 
 char parent_path[PATH_LEN_MAX];
 char filename[PATH_LEN_MAX];
+
 int fs_open(const char *path, int flags, struct inode **out)
 {
     memset(parent_path, 0, PATH_LEN_MAX);
@@ -435,39 +450,66 @@ int fs_open(const char *path, int flags, struct inode **out)
     uint32_t data_blk = parent->din.direct[0];
     struct dirent dir;
 
-    if (dir_is_exist(data_blk, filename, &dir)) {
+    int exist = dir_is_exist(data_blk, filename, &dir);
+    if (exist < 0) {
+        if (parent != g_root)
+            heap_free(parent);
+        return -1;
+    }
+
+    if (exist == 1) {
         if ((flags & O_EXCL) && (flags & O_CREAT)) {
+            if (parent != g_root)
+                heap_free(parent);
             return -1;
         }
 
         struct inode *node = heap_malloc(sizeof(struct inode));
-        if (!node) return -1;
+        if (!node) {
+            if (parent != g_root)
+                heap_free(parent);
+            return -1;
+        }
         node->din = DInodeArray[dir.ino];
         node->ino = dir.ino;
-        node->refcnt++;
+        node->refcnt = 1;
         *out = node;
+
+        if (parent != g_root)
+            heap_free(parent);
         return 0;
     }
 
     if (!(flags & O_CREAT)) {
+        if (parent != g_root)
+            heap_free(parent);
         return -1;
     }
 
     struct inode *newfile;
-    inode_alloc(&newfile);
+    if (inode_alloc(&newfile) < 0) {
+        if (parent != g_root)
+            heap_free(parent);
+        return -1;
+    }
 
-    newfile->din.mode = FILE_TYPE_REG;
+    newfile->din.mode = S_IFREG;
     newfile->din.size = 0;
-    newfile->din.direct[0] = block_alloc();
+    newfile->din.direct[0] = (uint32_t)block_alloc();
 
     DInodeArray[newfile->ino] = newfile->din;
 
-    if (dir_add_entry(parent, filename, newfile->ino, FILE_TYPE_REG) < 0)
+    if (dir_add_entry(parent, filename, newfile->ino, FILE_TYPE_REG) < 0) {
+        inode_free(newfile);
+        if (parent != g_root)
+            heap_free(parent);
         return -1;
+    }
 
-    newfile->refcnt++;
     *out = newfile;
 
+    if (parent != g_root)
+        heap_free(parent);
     return 0;
 }
 
@@ -512,6 +554,7 @@ int fs_read(struct inode *inode, uint32_t off, void *buf, uint32_t len)
 }
 
 static uint8_t block_cache[FS_BLOCK_SIZE];
+
 int fs_write(struct inode *inode, uint32_t off, const void *buf, uint32_t len)
 {
     const uint8_t *src = (const uint8_t *)buf;
@@ -550,7 +593,6 @@ int fs_write(struct inode *inode, uint32_t off, const void *buf, uint32_t len)
     return (int)total;
 }
 
-
 int fs_truncate(struct inode *inode, uint32_t newsize)
 {
     (void)inode;
@@ -565,6 +607,7 @@ int fs_close(struct inode *inode)
 
     if (--inode->refcnt == 0)
         heap_free(inode);
+
     for (int i = 1; i < 4; i++) {
         g_bdev->erase(g_bdev->ctx, i);
     }
@@ -580,4 +623,3 @@ int fs_close(struct inode *inode)
 
     return 0;
 }
-
