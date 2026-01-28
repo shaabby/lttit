@@ -385,7 +385,7 @@ uint8_t get_task_state(TaskHandle_t tcb)
 
     if (tcb->task_node.root == WakeTicksTree ||
         tcb->task_node.root == OverWakeTicksTree)
-        return Delay;
+        return OS_Delay;
 
     if (tcb->task_node.root == &SuspendTree)
         return Suspend;

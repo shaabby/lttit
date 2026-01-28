@@ -1,0 +1,26 @@
+RPC_METHOD_PROVIDER(
+    fs_read,
+    "fs.read",
+    PARAMS(
+        FIELD(string, path);
+        FIELD(u32, offset);
+        FIELD(u32, size);
+    ),
+    RESULTS(
+        FIELD(bytes, data);
+        FIELD(u32, len);
+        FIELD(u32, eof);
+    )
+)
+
+RPC_METHOD_REQUEST(
+    shell_exec,
+    "shell.exec",
+    PARAMS(
+        FIELD(string, cmd);
+    ),
+    RESULTS(
+        FIELD(string, output);
+        FIELD(u32, exitcode);
+    )
+)

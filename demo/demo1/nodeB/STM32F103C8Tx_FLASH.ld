@@ -66,7 +66,6 @@ FLASH (rx)     : ORIGIN = 0x08000000, LENGTH = 48K
 FS_FLASH (r)   : ORIGIN = 0x0800C000, LENGTH = 16K
 }
 
-
 /* Define output sections */
 SECTIONS
 {

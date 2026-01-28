@@ -56,23 +56,64 @@ void SystemClock_Config(void);
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 
-/* USER CODE END 0 */
-
-
+#include "stm32f1xx_hal.h"
 #include "schedule.h"
 #include "fs.h"
 #include "fs_port.h"
 #include "shell.h"
 #include "comm.h"
 #include "heap.h"
+#include "ccnet.h"
 #include <stdio.h>
 
-TaskHandle_t t1;
+extern UART_HandleTypeDef huart1;
+#define NODE_ID_A 1
+#define NODE_ID_B 2
+#define NODE_COUNT 3
+
+static uint8_t uart_rx;
+
+static int local_provider(void *ctx, void *data, size_t len)
+{
+    (void)ctx;
+    comm_ccnet_feed((uint8_t *)data, len);
+    return 0;
+}
+
+
+#include <memory.h>
+uint8_t send_buf[256];
+#define START 0xA55A
+#define CLOSE 0xDEAD
+static int nodeA_provider(void *ctx, void *data, size_t len)
+{
+    (void)ctx;
+    memset(send_buf, 0, sizeof(send_buf));
+    uint16_t *p = (uint16_t *)send_buf;
+    *p = START;
+    p = (uint16_t *)&send_buf[len + 2];
+    *p = CLOSE;
+    memcpy(send_buf + 2, data, len);
+    for (int i = 0; i < 256; i++) {
+        HAL_UART_Transmit(&huart1, (void *)&send_buf[i], 1, HAL_MAX_DELAY);
+    }
+    return 0;
+}
+
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+{
+    if (huart == &huart1) {
+        HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_SET);
+        ccnet_feed_byte(uart_rx);
+        HAL_UART_Receive_IT(&huart1, &uart_rx, 1);
+    }
+}
+
+TaskHandle_t t_shell;
+
 void task_shell(void *ctx)
 {
     (void)ctx;
-    HAL_Delay(100);
-
     printf("Starting shell...\r\n");
 
     while (1) {
@@ -81,69 +122,48 @@ void task_shell(void *ctx)
     }
 }
 
-void APP()
+void APP(void)
 {
-    uint32_t pid = TaskCreate(task_shell, 256,
-               NULL, 0, 10, 2000,
-               &t1);
-    printf("pid:%u\r\n", pid);
+    ccnet_init(NODE_ID_B, NODE_COUNT);
+
+    ccnet_register_node_link(NODE_ID_B, local_provider);
+    ccnet_register_node_link(NODE_ID_A, nodeA_provider);
+
+    ccnet_graph_set_edge(NODE_ID_A, NODE_ID_B, 1);
+    ccnet_graph_set_edge(NODE_ID_B, NODE_ID_A, 1);
+
+    ccnet_build_routing_table();
+
+    comm_init_ccnet(NODE_ID_A);
+
+    struct superblock sb;
+    fs_port_init();
+    if (fs_port_mount(&sb) != 0)
+        printf("FS mount failed!\r\n");
+    else
+        printf("FS mounted OK!\r\n");
+
+    HAL_UART_Receive_IT(&huart1, &uart_rx, 1);
+
+    TaskCreate(task_shell, 128, NULL, 0, 10, 2000, &t_shell);
 }
 
 int main(void)
 {
-
-    /* USER CODE BEGIN 1 */
-
-    /* USER CODE END 1 */
-
-    /* MCU Configuration--------------------------------------------------------*/
-
-    /* Reset of all peripherals, Initializes the Flash interface and the Systick. */
     HAL_Init();
-
-    /* USER CODE BEGIN Init */
-
-    /* USER CODE END Init */
-
-    /* Configure the system clock */
     SystemClock_Config();
 
-    /* USER CODE BEGIN SysInit */
-
-    /* USER CODE END SysInit */
-
-    /* Initialize all configured peripherals */
     MX_GPIO_Init();
     MX_USART1_UART_Init();
-    /* USER CODE BEGIN 2 */
-
-    comm_init_uart(&huart1);
-
-    struct superblock sb;
-    fs_port_init();
-    if (fs_port_mount(&sb) != 0) {
-        printf("FS mount failed!\r\n");
-    } else {
-        printf("FS mounted OK!\r\n");
-    }
 
     SchedulerInit();
     APP();
     SchedulerStart();
 
-    /* USER CODE END 2 */
-
-    /* Infinite loop */
-    /* USER CODE BEGIN WHILE */
-    while (1)
-    {
-        /* USER CODE END WHILE */
-
-        /* USER CODE BEGIN 3 */
-    }
-    /* USER CODE END 3 */
+    while (1) {}
 }
 
+/* USER CODE END 0 */
 /**
   * @brief System Clock Configuration
   * @retval None

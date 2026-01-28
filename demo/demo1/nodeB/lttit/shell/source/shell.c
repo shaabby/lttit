@@ -130,6 +130,7 @@ int shell_readline(char *buf, int max)
         }
     }
 }
+
 void shell_main(void)
 {
     comm_write("> ", 2);
@@ -141,6 +142,7 @@ void shell_main(void)
     if (argc == 0) return;
 
     shell_exec(argc, argv_buf);
+
 }
 
 int shell_parse(char *line, char **argv, int max)
@@ -346,7 +348,7 @@ int cmd_ps(int argc, char **argv)
         const char *state_str =
                 (info.state == RUNNING)  ? "RUNNING"  :
                 (info.state == Ready)    ? "READY"    :
-                (info.state == Delay)  ? "DELAYED"  :
+                (info.state == OS_Delay)  ? "DELAYED"  :
                 (info.state == Suspend)? "SUSPEND"  :
                 (info.state == Dead)  ? "DELETED"  :
                 "UNKNOWN";

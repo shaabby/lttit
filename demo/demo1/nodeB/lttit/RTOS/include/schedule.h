@@ -14,7 +14,7 @@
 #define Ready       0
 #define Suspend     1
 #define Dead        2
-#define Delay       3
+#define OS_Delay       3
 #define RUNNING     4
 
 

@@ -2,21 +2,20 @@
 #define COMM_H
 
 #include <stdint.h>
-typedef struct {
-    void (*putc)(char c);                 /* 输出一个字符 */
-    char (*getc)(void);                   /* 阻塞读一个字符 */
-    void (*write)(const char *buf, int len); /* 输出一段缓冲区 */
+#include <stddef.h>
 
-    int  (*peek)(void);                   /* 非阻塞查看下一个字节，-1 表示无数据 */
+typedef struct {
+    void (*putc)(char c);
+    char (*getc)(void);
+    void (*write)(const char *buf, int len);
+    int  (*peek)(void);
 } comm_t;
 
-/* 当前使用的通信通道（全局指针） */
 extern const comm_t *comm;
 
-/* 初始化：绑定到 UART 通道（例如 USART1） */
-void comm_init_uart(void *huart_handle);
+void comm_init_ccnet(uint16_t dst_node);
+void comm_ccnet_feed(const uint8_t *data, size_t len);
 
-/* 方便上层用的包装函数 */
 static inline void comm_putc(char c)
 {
     comm->putc(c);
@@ -32,4 +31,9 @@ static inline void comm_write(const char *buf, int len)
     comm->write(buf, len);
 }
 
-#endif /* COMM_H */
+static inline int comm_peek(void)
+{
+    return comm->peek();
+}
+
+#endif
