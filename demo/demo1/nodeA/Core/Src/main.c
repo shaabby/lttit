@@ -143,17 +143,17 @@ void rec_pc_input(void *ctx)
         char v = 0;
         HAL_UART_Receive(&huart1, (void *)&v, 1, 10);
         if (v != 0) {
+            line[line_index++] = v;
             if (v == '\r') {
                 struct ccnet_send_parameter csp;
                 csp.dst = NODE_ID_B;
                 csp.ttl = CCNET_TTL_DEFAULT;
                 csp.type = CCNET_TYPE_DATA;
 
-                ccnet_output(&csp, line, sizeof(line));
+                ccnet_output(&csp, line, line_index - 1);
                 line_index = 0;
                 memset(line, 0, sizeof(line));
             }
-            line[line_index++] = v;
         }
         TaskDelay(100);
     }

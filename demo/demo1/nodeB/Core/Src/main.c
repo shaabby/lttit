@@ -227,7 +227,7 @@ void APP(void)
     HAL_NVIC_EnableIRQ(USART1_IRQn);
     HAL_UART_Receive_IT(&huart1, rcv_buf, 256);
 
-    TaskCreate(task_shell, 1024, NULL, 0, 10, 2000, &t_shell);
+    TaskCreate(task_shell, 256, NULL, 0, 10, 2000, &t_shell);
 }
 
 
