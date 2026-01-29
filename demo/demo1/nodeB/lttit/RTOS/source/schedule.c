@@ -139,6 +139,7 @@ void Insert_IPC(TaskHandle_t self, struct rb_root *root)
 void Remove_IPC(TaskHandle_t self)
 {
     rb_remove_node(self->IPC_node.root, &self->IPC_node);
+    self->IPC_node.root = NULL;
 }
 
 void ADTTreeInit(void)
@@ -198,12 +199,12 @@ void TaskDelay(uint16_t ticks)
 }
 
 uint32_t TaskCreate(TaskFunction_t TaskCode,
-                uint16_t StackDepth,
-                void *Parameters,
-                uint16_t period,
-                uint8_t respondLine,
-                uint16_t deadline,
-                TaskHandle_t *self)
+                    uint16_t StackDepth,
+                    void *Parameters,
+                    uint16_t period,
+                    uint8_t respondLine,
+                    uint16_t deadline,
+                    TaskHandle_t *self)
 {
     uint32_t *topStack;
     uint32_t *pxStack;
@@ -290,7 +291,7 @@ void TaskFree(void)
     if (DeleteTree.count) {
         struct rb_node *n = rb_last(&DeleteTree);
         TaskHandle_t self =
-        container_of(n, struct TCB_t, task_node);
+                container_of(n, struct TCB_t, task_node);
 
         rb_remove_node(&DeleteTree, &self->task_node);
         heap_free(self->pxStack);
@@ -362,7 +363,7 @@ void CheckTicks(void)
         while ((n = WakeTicksTree->first_node) &&
                n->value <= NowTickCount) {
             TaskHandle_t self =
-            container_of(n, struct TCB_t, task_node);
+                    container_of(n, struct TCB_t, task_node);
 
             DelayTreeRemove(self);
             TaskTreeAdd(self, Ready);

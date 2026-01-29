@@ -61,72 +61,147 @@ void SystemClock_Config(void);
 #include "fs.h"
 #include "fs_port.h"
 #include "shell.h"
+#include "sem.h"
 #include "comm.h"
-#include "heap.h"
 #include "ccnet.h"
+#include "common.h"
+#include <memory.h>
 #include <stdio.h>
 
 extern UART_HandleTypeDef huart1;
+
 #define NODE_ID_A 1
 #define NODE_ID_B 2
 #define NODE_COUNT 3
+semaphore_handle sem;
+uint8_t send_buf[256];
+uint8_t rcv_buf[256];
+uint8_t packet[256];
 
-static uint8_t uart_rx;
+#define START 0xA55AA55A
+#define CLOSE 0xDEAD5A5A
 
-static int local_provider(void *ctx, void *data, size_t len)
+int buf_init(void)
 {
-    (void)ctx;
-    comm_ccnet_feed((uint8_t *)data, len);
+    memset(send_buf, 0, sizeof(send_buf));
+    memset(rcv_buf, 0, sizeof(rcv_buf));
+    memset(packet, 0, sizeof(packet));
     return 0;
 }
 
-
-#include <memory.h>
-uint8_t send_buf[256];
-#define START 0xA55A
-#define CLOSE 0xDEAD
 static int nodeA_provider(void *ctx, void *data, size_t len)
 {
     (void)ctx;
     memset(send_buf, 0, sizeof(send_buf));
-    uint16_t *p = (uint16_t *)send_buf;
+    uint32_t *p = (uint32_t *)send_buf;
     *p = START;
-    p = (uint16_t *)&send_buf[len + 2];
+    p = (uint32_t *)&send_buf[len + 4];
     *p = CLOSE;
-    memcpy(send_buf + 2, data, len);
-    for (int i = 0; i < 256; i++) {
-        HAL_UART_Transmit(&huart1, (void *)&send_buf[i], 1, HAL_MAX_DELAY);
-    }
+    memcpy(send_buf + 4, data, len);
+
+    HAL_UART_Transmit(&huart1, (void *)send_buf, sizeof(send_buf), HAL_MAX_DELAY);
+
     return 0;
 }
 
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
     if (huart == &huart1) {
-        HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_SET);
-        ccnet_feed_byte(uart_rx);
-        HAL_UART_Receive_IT(&huart1, &uart_rx, 1);
+
+        semaphore_release(sem);
+        __HAL_UART_CLEAR_OREFLAG(&huart1);
+
+        __HAL_UART_ENABLE_IT(&huart1, UART_IT_RXNE);
+        HAL_NVIC_EnableIRQ(USART1_IRQn);
+
+        HAL_UART_Receive_IT(&huart1, rcv_buf, 256);
     }
 }
 
+
+int shell_process_mes(void *ctx, void *data, size_t len)
+{
+    shell_on_message(data, len);
+    return 0;
+}
+
 TaskHandle_t t_shell;
+void shell_process_remote(void)
+{
+    int start = 0;
+    int end = 0;
+    for (uint16_t i = 0; i < 256; i++) {
+        uint32_t tmp = *((uint32_t *)&rcv_buf[i]);
+        uint32_t magic = (uint32_t)tmp;
+        if (magic == START) {
+            start = i + 4;
+        }
+        if (magic == CLOSE && start < i) {
+            end = i;
+            break;
+        }
+    }
+    if (end > start) {
+        int len = end - start;
+        void *start_data = &rcv_buf[start];
+        memset(packet, 0, sizeof(packet));
+        memcpy(packet, start_data, len);
+        struct ccnet_hdr *ch = (struct ccnet_hdr *) packet;
+        uint16_t packet_len = ntohs(ch->len) + sizeof(struct ccnet_hdr);
+        ccnet_input(NULL, (void *)packet, packet_len);
+    }
+}
 
 void task_shell(void *ctx)
 {
     (void)ctx;
-    printf("Starting shell...\r\n");
-
     while (1) {
-        shell_main();
+        if (semaphore_take(sem, 10) == true) {
+            shell_process_remote();
+        }
         TaskDelay(10);
     }
 }
 
+void send(void *ctx, void *data, int len)
+{
+    struct ccnet_send_parameter p;
+    p.dst  = NODE_ID_A;
+    p.ttl  = CCNET_TTL_DEFAULT;
+    p.type = CCNET_TYPE_DATA;
+
+    ccnet_output(&p, data, len);
+}
+#include <string.h>
+#include "fs.h"
+
+void fs_init_hello(void)
+{
+    struct inode *ino = NULL;
+    const char *msg = "hello world\n";
+
+    /* 在根目录下创建 /hello.c，如果已经存在就直接打开 */
+    if (fs_open("/hello.c", O_CREAT, &ino) < 0) {
+        // 这里你可以加 comm_write 打印错误
+        return;
+    }
+
+    /* 从偏移 0 写入 hello world\n */
+    if (fs_write(ino, 0, msg, (uint32_t)strlen(msg)) < 0) {
+        fs_close(ino);
+        return;
+    }
+
+    fs_close(ino);
+    fs_sync();
+}
+
+struct shell_trans_class st_class;
 void APP(void)
 {
     ccnet_init(NODE_ID_B, NODE_COUNT);
 
-    ccnet_register_node_link(NODE_ID_B, local_provider);
+    ccnet_register_node_link(NODE_ID_B, shell_process_mes);
     ccnet_register_node_link(NODE_ID_A, nodeA_provider);
 
     ccnet_graph_set_edge(NODE_ID_A, NODE_ID_B, 1);
@@ -134,7 +209,9 @@ void APP(void)
 
     ccnet_build_routing_table();
 
-    comm_init_ccnet(NODE_ID_A);
+    st_class.init = (void *)buf_init;
+    st_class.send = (void *)send;
+    comm_bind(&st_class, NULL);
 
     struct superblock sb;
     fs_port_init();
@@ -142,11 +219,17 @@ void APP(void)
         printf("FS mount failed!\r\n");
     else
         printf("FS mounted OK!\r\n");
+    //fs_init_hello();
+    sem = semaphore_creat(0);
+    __HAL_UART_CLEAR_OREFLAG(&huart1);
 
-    HAL_UART_Receive_IT(&huart1, &uart_rx, 1);
+    __HAL_UART_ENABLE_IT(&huart1, UART_IT_RXNE);
+    HAL_NVIC_EnableIRQ(USART1_IRQn);
+    HAL_UART_Receive_IT(&huart1, rcv_buf, 256);
 
-    TaskCreate(task_shell, 128, NULL, 0, 10, 2000, &t_shell);
+    TaskCreate(task_shell, 1024, NULL, 0, 10, 2000, &t_shell);
 }
+
 
 int main(void)
 {
@@ -162,7 +245,6 @@ int main(void)
 
     while (1) {}
 }
-
 /* USER CODE END 0 */
 /**
   * @brief System Clock Configuration

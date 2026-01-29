@@ -57,6 +57,7 @@ void SystemClock_Config(void);
 /* USER CODE BEGIN 0 */
 #include "stm32f1xx_hal.h"
 #include "schedule.h"
+#include "sem.h"
 #include "ccnet.h"
 #include "common.h"
 #include <stdio.h>
@@ -69,9 +70,6 @@ extern UART_HandleTypeDef huart2;
 #define NODE_ID_B   2
 #define NODE_COUNT  3
 
-static uint8_t uart1_rx;
-static uint8_t uart2_rx;
-
 static int pc_provider(void *ctx, void *data, size_t len)
 {
     (void)ctx;
@@ -80,21 +78,22 @@ static int pc_provider(void *ctx, void *data, size_t len)
 }
 
 
-#define START 0xA55A
-#define CLOSE 0xDEAD
-static uint8_t tmp_buf[256];
-static uint8_t packet[128];
-static uint8_t cnt = 0;
+uint8_t send_buf[256];
+uint8_t rcv_buf[256];
+uint8_t packet[256];
+semaphore_handle sem_process;
+#define START 0xA55AA55A
+#define CLOSE 0xDEAD5A5A
 
 void process(void)
 {
     int start = 0;
     int end = 0;
     for (uint16_t i = 0; i < 256; i++) {
-        uint16_t tmp = *((uint16_t *)&tmp_buf[i]);
-        uint16_t magic = (uint16_t)tmp;
+        uint32_t tmp = *((uint32_t *)&rcv_buf[i]);
+        uint32_t magic = (uint32_t)tmp;
         if (magic == START) {
-            start = i + 2;
+            start = i + 4;
         }
         if (magic == CLOSE && start < i) {
             end = i;
@@ -103,66 +102,75 @@ void process(void)
     }
     if (end > start) {
         int len = end - start;
-        void *start_data = &tmp_buf[start];
+        void *start_data = &rcv_buf[start];
+        memset(packet, 0, sizeof(packet));
         memcpy(packet, start_data, len);
         struct ccnet_hdr *ch = (struct ccnet_hdr *) packet;
-        int packet_len = htons(ch->len) + sizeof(struct ccnet_hdr);
+        uint16_t packet_len = ntohs(ch->len) + sizeof(struct ccnet_hdr);
         ccnet_input(NULL, packet, packet_len);
-        memset(packet, 0, sizeof(packet));
     }
 }
 
 
-uint8_t send_buf[256];
-#define START 0xA55A
-#define CLOSE 0xDEAD
 static int nodeB_provider(void *ctx, void *data, size_t len)
 {
     (void)ctx;
     memset(send_buf, 0, sizeof(send_buf));
-    uint16_t *p = (uint16_t *)send_buf;
+    uint32_t *p = (uint32_t *)send_buf;
     *p = START;
-    p = (uint16_t *)&send_buf[len + 2];
+    p = (uint32_t *)&send_buf[len + 4];
     *p = CLOSE;
-    memcpy(send_buf + 2, data, len);
-    for (int i = 0; i < 256; i++) {
-        HAL_UART_Transmit(&huart1, (void *)&send_buf[i], 1, HAL_MAX_DELAY);
-    }
+    memcpy(send_buf + 4, data, len);
+    HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_SET);
+    HAL_UART_Transmit(&huart2, (void *)send_buf, sizeof(send_buf), HAL_MAX_DELAY);
     return 0;
 }
 
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
     if (huart == &huart2) {
-        tmp_buf[cnt++] = uart2_rx;
-        if (cnt == 255) {
-            cnt = 0;
-            process();
-        }
-
-        HAL_UART_Receive_IT(&huart2, &uart2_rx, 1);
+        semaphore_release(sem_process);
+        __HAL_UART_CLEAR_OREFLAG(&huart2);
+        HAL_UART_Receive_IT(&huart2, rcv_buf, 256);
     }
 }
 
+uint8_t line[64];
+uint8_t line_index = 0;
 void rec_pc_input(void *ctx)
 {
     while (1) {
-        char a = 0;
-        HAL_UART_Receive(&huart1, &a, 1, HAL_MAX_DELAY);
-        if (a != 0) {
-            struct ccnet_send_parameter csp;
-            csp.dst = NODE_ID_B;
-            csp.ttl = CCNET_TTL_DEFAULT;
-            csp.type = CCNET_TYPE_DATA;
+        char v = 0;
+        HAL_UART_Receive(&huart1, (void *)&v, 1, 10);
+        if (v != 0) {
+            if (v == '\r') {
+                struct ccnet_send_parameter csp;
+                csp.dst = NODE_ID_B;
+                csp.ttl = CCNET_TTL_DEFAULT;
+                csp.type = CCNET_TYPE_DATA;
 
-            ccnet_output(&csp, &a, 1);
+                ccnet_output(&csp, line, sizeof(line));
+                line_index = 0;
+                memset(line, 0, sizeof(line));
+            }
+            line[line_index++] = v;
         }
+        TaskDelay(100);
+    }
+}
 
+void process_rcv(void *ctx)
+{
+    while (1) {
+        if (semaphore_take(sem_process, 1000) == true) {
+            process();
+        }
         TaskDelay(10);
     }
 }
 
 TaskHandle_t t2;
+TaskHandle_t t_process;
 void APP(void)
 {
     ccnet_init(NODE_ID_A, NODE_COUNT);
@@ -174,9 +182,14 @@ void APP(void)
     ccnet_graph_set_edge(NODE_ID_B, NODE_ID_A, 1);
 
     ccnet_build_routing_table();
+    sem_process = semaphore_creat(0);
 
-    HAL_UART_Receive_IT(&huart2, &uart2_rx, 1);
-    TaskCreate(rec_pc_input, 64, NULL, 0, 10, 1000, &t2);
+    __HAL_UART_CLEAR_OREFLAG(&huart2);
+    HAL_UART_Receive_IT(&huart2, rcv_buf, 256);
+
+    TaskCreate(rec_pc_input, 128, NULL, 0, 10, 1000, &t2);
+    TaskCreate(process_rcv, 128, NULL, 0, 20, 2000, &t_process);
+
 }
 
 int main(void)

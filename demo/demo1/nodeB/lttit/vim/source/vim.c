@@ -233,22 +233,23 @@ void buf_free(struct buffer *b)
 static void screen_draw(struct buffer *b, int insert_mode)
 {
     char buf[64];
-    comm->write("\x1b[2J", 4);
-    comm->write("\x1b[H", 3);
+   comm_write("\x1b[2J", 4);
+   comm_write("\x1b[H", 3);
     for (int i = 0; i < b->line_count; i++) {
-        comm->write(b->lines[i].data, b->lines[i].len);
-        comm->write("\r\n", 2);
+       comm_write(b->lines[i].data, b->lines[i].len);
+       comm_write("\r\n", 2);
     }
     int n = snprintf(buf, sizeof(buf), "\x1b[%d;1H", b->line_count + 2);
-    comm->write(buf, n);
+   comm_write(buf, n);
     if (insert_mode)
-        comm->write("-- INSERT --", 12);
+       comm_write("-- INSERT --", 12);
     n = snprintf(buf, sizeof(buf), "\x1b[%d;%dH", b->cursor_y + 1, b->cursor_x + 1);
-    comm->write(buf, n);
+   comm_write(buf, n);
 }
 
 void vim_main(const char *path)
 {
+    /*
     struct buffer buf = {0};
     buf_load(&buf, path);
     int insert_mode = 0;
@@ -271,6 +272,7 @@ void vim_main(const char *path)
         if (buf.cursor_x < 0)
             buf.cursor_x = 0;
         screen_draw(&buf, insert_mode);
+
         char c = comm->getc();
         if ((unsigned char)c == 0x1B) {
             insert_mode = 0;
@@ -286,7 +288,7 @@ void vim_main(const char *path)
             else if (c == ':') {
                 char tmp[64];
                 int n = snprintf(tmp, sizeof(tmp), "\x1b[%d;1H:", buf.line_count + 2);
-                comm->write(tmp, n);
+               comm_write(tmp, n);
                 char cmd[16];
                 int pos = 0;
                 for (;;) {
@@ -303,7 +305,7 @@ void vim_main(const char *path)
                 if (strcmp(cmd, "w") == 0) buf_save(&buf, path);
                 else if (strcmp(cmd, "q") == 0) {
                     screen_draw(&empty_buf, 0);
-                    comm->write("\r\n", 2);
+                   comm_write("\r\n", 2);
                     buf_free(&buf);
                     return;
                 }
@@ -321,4 +323,5 @@ void vim_main(const char *path)
         }
         buf_insert_char(&buf, c);
     }
+     */
 }

@@ -46,7 +46,7 @@ uint8_t semaphore_release(semaphore_handle sem)
         Remove_IPC(t);
         TaskTreeAdd(t, Ready);
 
-        if (GetRespondLine(t) > prio)
+        if (GetRespondLine(t) < prio)
             schedule();
     }
 

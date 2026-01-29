@@ -4,36 +4,31 @@
 #include <stdint.h>
 #include <stddef.h>
 
-typedef struct {
-    void (*putc)(char c);
-    char (*getc)(void);
-    void (*write)(const char *buf, int len);
-    int  (*peek)(void);
-} comm_t;
+struct shell_trans_class {
+    void (*init)(void *ctx);
+    void (*send)(void *ctx, void *buf, size_t len);
+    void *ctx;
+};
 
-extern const comm_t *comm;
+extern struct shell_trans_class *g_shell_trans;
 
-void comm_init_ccnet(uint16_t dst_node);
-void comm_ccnet_feed(const uint8_t *data, size_t len);
-
-static inline void comm_putc(char c)
-{
-    comm->putc(c);
-}
-
-static inline char comm_getc(void)
-{
-    return comm->getc();
-}
+void comm_bind(struct shell_trans_class *t, void *ctx);
 
 static inline void comm_write(const char *buf, int len)
 {
-    comm->write(buf, len);
+    if (g_shell_trans && g_shell_trans->send && buf && len > 0) {
+        g_shell_trans->send(g_shell_trans->ctx, buf, len);
+    }
 }
 
-static inline int comm_peek(void)
+static inline void comm_putc(char c)
 {
-    return comm->peek();
+    comm_write(&c, 1);
+}
+
+static inline char comm_getc()
+{
+    return 0;
 }
 
 #endif

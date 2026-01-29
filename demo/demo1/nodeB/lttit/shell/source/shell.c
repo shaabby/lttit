@@ -395,3 +395,20 @@ void shell_exec(int argc, char **argv)
     }
     printf("unknown command: %s\n", argv[0]);
 }
+
+void shell_on_message(const char *msg, int len)
+{
+    if (!msg || len <= 0)
+        return;
+    if (len >= SHELL_MAX_LINE)
+        len = SHELL_MAX_LINE - 1;
+
+    memcpy(linebuf, msg, len);
+    linebuf[len] = '\0';
+
+    int argc = shell_parse(linebuf, argv_buf, SHELL_MAX_ARGS);
+    if (argc == 0)
+        return;
+
+    shell_exec(argc, argv_buf);
+}

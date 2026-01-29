@@ -139,6 +139,7 @@ void Insert_IPC(TaskHandle_t self, struct rb_root *root)
 void Remove_IPC(TaskHandle_t self)
 {
     rb_remove_node(self->IPC_node.root, &self->IPC_node);
+    self->IPC_node.root = NULL;
 }
 
 void ADTTreeInit(void)
