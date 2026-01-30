@@ -138,31 +138,6 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
     }
 }
 
-uint8_t line[64];
-uint8_t line_index = 0;
-void rec_pc_input(void *ctx)
-{
-    while (1) {
-        TaskEnter();
-        char v = 0;
-        HAL_UART_Receive(&huart1, (void *)&v, 1, 10);
-        if (v != 0) {
-            line[line_index++] = v;
-            if (v == '\r') {
-                struct ccnet_send_parameter csp;
-                csp.dst = NODE_ID_B;
-                csp.ttl = CCNET_TTL_DEFAULT;
-                csp.type = CCNET_TYPE_DATA;
-
-                ccnet_output(&csp, line, line_index - 1);
-                line_index = 0;
-                memset(line, 0, sizeof(line));
-            }
-        }
-        TaskExit();
-    }
-}
-
 void process_rcv(void *ctx)
 {
     while (1) {
@@ -184,7 +159,6 @@ void task_shell(void *ctx)
     }
 }
 
-TaskHandle_t t2;
 TaskHandle_t t_process;
 TaskHandle_t t_shell;
 void APP(void)
@@ -202,10 +176,7 @@ void APP(void)
 
     __HAL_UART_CLEAR_OREFLAG(&huart2);
     HAL_UART_Receive_IT(&huart2, rcv_buf, 256);
-/*
-    TaskCreate(rec_pc_input, 128, NULL, 5, 0, 50, &t2);
-    TaskCreate(process_rcv, 128, NULL, 0, 0, 10, &t_process);
-*/
+
     comm_init_uart(&huart1);
     struct superblock sb;
     fs_port_init();
@@ -218,7 +189,8 @@ void APP(void)
     printf("Starting shell...\r\n");
 
     HAL_Delay(100);
-    TaskCreate(task_shell, 256, NULL, 10, 0, 10, &t_process);
+    TaskCreate(process_rcv, 128, NULL, 0, 0, 10, &t_process);
+    TaskCreate(task_shell, 256, NULL, 10, 0, 10, &t_shell);
 }
 int main(void)
 {

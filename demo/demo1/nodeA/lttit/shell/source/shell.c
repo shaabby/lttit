@@ -1,18 +1,20 @@
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
 #include "shell.h"
 #include "vim.h"
 #include "fs.h"
 #include "comm.h"
 #include "schedule.h"
 #include "heap.h"
+#include "ccnet.h"
 
 static char linebuf[SHELL_MAX_LINE];
 static char path[64];
 
 static char cwd[64] = "";
 static char *argv_buf[SHELL_MAX_ARGS];
-static char abs[64];
+static char shell_abs[64];
 
 static void normalize_path(char *path)
 {
@@ -273,10 +275,10 @@ int cmd_vim(int argc, char **argv)
         printf("usage: edit FILE\n");
         return -1;
     }
-    memset(abs, 0, sizeof(abs));
-    make_abs_path(abs, argv[1]);
+    memset(abs, 0, sizeof(shell_abs));
+    make_abs_path(shell_abs, argv[1]);
 
-    vim_main(abs);
+    vim_main(shell_abs);
     return 0;
 }
 
@@ -365,6 +367,34 @@ int cmd_ps(int argc, char **argv)
     return 0;
 }
 
+int cmd_remote(int argc, char **argv)
+{
+    if (argc < 3) {
+        printf("usage: remote <node_id> <cmd...>\r\n");
+        return -1;
+    }
+
+    uint8_t dst = atoi(argv[1]);
+
+    char buf[64];
+    buf[0] = 0;
+
+    for (int i = 2; i < argc; i++) {
+        strcat(buf, argv[i]);
+        if (i != argc - 1)
+            strcat(buf, " ");
+    }
+
+    struct ccnet_send_parameter csp;
+    csp.dst  = dst;
+    csp.ttl  = CCNET_TTL_DEFAULT;
+    csp.type = CCNET_TYPE_DATA;
+
+    ccnet_output(&csp, buf, strlen(buf));
+
+    return 0;
+}
+
 
 struct cmd_entry {
     const char *name;
@@ -380,6 +410,7 @@ static struct cmd_entry cmd_table[] = {
         {"sync",    cmd_sync},
         {"mem", cmd_mem},
         {"ps", cmd_ps},
+        {"remote", cmd_remote},
         {NULL, NULL}
 };
 
