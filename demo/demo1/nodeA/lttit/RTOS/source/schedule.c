@@ -30,6 +30,7 @@ struct hashmap pid_map;
 
 volatile uint32_t NowTickCount = 0;
 static uint32_t next_pid = 1;
+static uint32_t global_congestion = 0;
 
 struct TCB_t {
     volatile uint32_t *pxTopOfStack;
@@ -42,9 +43,11 @@ struct TCB_t {
     uint32_t EnterTime;
     uint32_t ExitTime;
     uint32_t SmoothTime;
+    uint32_t abs_deadline;
     uint32_t stack_mem;
     uint32_t max_used_mem;
     uint32_t *pxStack;
+    uint32_t miss_count;
 };
 
 __attribute__((used)) TaskHandle_t volatile schedule_currentTCB;
@@ -59,16 +62,14 @@ static inline uint8_t task_is_rt(TaskHandle_t t)
     return t->deadline != 0;
 }
 
-#define RT_WINDOW (0xFFFF >> 1)
-
 static inline uint32_t rt_prio_value(TaskHandle_t t)
 {
-    return NowTickCount - (RT_WINDOW - t->deadline);
+    return t->abs_deadline;
 }
 
 static inline uint32_t be_prio_value(TaskHandle_t t)
 {
-    return NowTickCount + t->respondLine;
+    return NowTickCount + t->respondLine + global_congestion;
 }
 
 static inline uint32_t calc_task_prio(TaskHandle_t t)
@@ -237,13 +238,14 @@ uint32_t TaskCreate(TaskFunction_t TaskCode,
 
     *self = NewTcb;
     *NewTcb = (struct TCB_t){
-            .period      = period,
-            .respondLine = respondLine,
-            .deadline    = deadline,
-            .SmoothTime  = 0,
-            .stack_mem   = stack_mem,
-            .pxStack     = pxStack,
-            .pid         = task_pid_alloc(),
+            .period       = period,
+            .respondLine  = respondLine,
+            .deadline     = deadline,
+            .SmoothTime   = 0,
+            .abs_deadline = 0,
+            .stack_mem    = stack_mem,
+            .pxStack      = pxStack,
+            .pid          = task_pid_alloc(),
     };
 
     hashmap_put(&pid_map, (void *)(uintptr_t)NewTcb->pid, NewTcb);
@@ -256,6 +258,9 @@ uint32_t TaskCreate(TaskFunction_t TaskCode,
 
     rb_node_init(&NewTcb->task_node);
     rb_node_init(&NewTcb->IPC_node);
+
+    if (NewTcb->deadline != 0)
+        NewTcb->abs_deadline = NowTickCount + NewTcb->deadline;
 
     sched_log("[CREATE] pid=%lu deadline=%u respond=%u period=%u\n",
               NewTcb->pid, NewTcb->deadline, NewTcb->respondLine, NewTcb->period);
@@ -297,13 +302,24 @@ uint32_t TaskExit(void)
     self->ExitTime = NowTickCount;
     newPeriod = self->ExitTime - self->EnterTime;
 
-    if (self->SmoothTime != 0)
-        self->SmoothTime = (self->SmoothTime * 7 + newPeriod) >> 3;
-    else
+    if (self->SmoothTime != 0) {
+        uint32_t old = self->SmoothTime;
+        self->SmoothTime = (old * 7 + newPeriod) >> 3;
+        if (self->deadline != 0 && self->period != 0) {
+            if (newPeriod > old) {
+                if (global_congestion < 100000)
+                    global_congestion++;
+            } else {
+                global_congestion = global_congestion - (global_congestion >> 3);
+            }
+        }
+    } else {
         self->SmoothTime = newPeriod;
+    }
 
-    if (self->deadline && newPeriod >= self->deadline)
-        ErrorHandle();
+    if (self->deadline && NowTickCount > self->abs_deadline) {
+        self->miss_count++;
+    }
 
     sched_log("[EXIT] pid=%lu exec=%lu smooth=%lu\n",
               self->pid, newPeriod, self->SmoothTime);
@@ -426,6 +442,10 @@ void CheckTicks(void)
                     container_of(n, struct TCB_t, task_node);
 
             DelayTreeRemove(self);
+
+            if (self->deadline != 0 && self->period != 0)
+                self->abs_deadline = NowTickCount + self->deadline;
+
             TaskTreeAdd(self, Ready);
 
             sched_log("[WAKE] pid=%lu at tick=%lu\n", self->pid, NowTickCount);

@@ -140,6 +140,7 @@ uint8_t line_index = 0;
 void rec_pc_input(void *ctx)
 {
     while (1) {
+        TaskEnter();
         char v = 0;
         HAL_UART_Receive(&huart1, (void *)&v, 1, 10);
         if (v != 0) {
@@ -155,17 +156,18 @@ void rec_pc_input(void *ctx)
                 memset(line, 0, sizeof(line));
             }
         }
-        TaskDelay(100);
+        TaskExit();
     }
 }
 
 void process_rcv(void *ctx)
 {
     while (1) {
+        TaskEnter();
         if (semaphore_take(sem_process, 1000) == true) {
             process();
         }
-        TaskDelay(10);
+        TaskExit();
     }
 }
 
@@ -187,8 +189,8 @@ void APP(void)
     __HAL_UART_CLEAR_OREFLAG(&huart2);
     HAL_UART_Receive_IT(&huart2, rcv_buf, 256);
 
-    TaskCreate(rec_pc_input, 128, NULL, 0, 0, 10, &t2);
-    TaskCreate(process_rcv, 128, NULL, 0, 0, 1, &t_process);
+    TaskCreate(rec_pc_input, 128, NULL, 5, 0, 50, &t2);
+    TaskCreate(process_rcv, 128, NULL, 0, 0, 10, &t_process);
 
 }
 int main(void)
