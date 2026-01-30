@@ -187,11 +187,10 @@ void APP(void)
     __HAL_UART_CLEAR_OREFLAG(&huart2);
     HAL_UART_Receive_IT(&huart2, rcv_buf, 256);
 
-    TaskCreate(rec_pc_input, 128, NULL, 0, 10, 1000, &t2);
-    TaskCreate(process_rcv, 128, NULL, 0, 20, 2000, &t_process);
+    TaskCreate(rec_pc_input, 128, NULL, 0, 0, 10, &t2);
+    TaskCreate(process_rcv, 128, NULL, 0, 0, 1, &t_process);
 
 }
-
 int main(void)
 {
     HAL_Init();
@@ -207,7 +206,6 @@ int main(void)
 
     while (1) {}
 }
-
 
 /* USER CODE END 0 */
 
