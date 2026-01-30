@@ -3,6 +3,7 @@
 #include "heap.h"
 #include "port.h"
 #include "rbtree.h"
+#include "compare.h"
 
 struct queue_struct {
     uint8_t *start;
@@ -18,10 +19,8 @@ struct queue_struct {
 
 extern uint8_t schedule_PendSV;
 
-#define get_top_tcb_index FindHighestPriority
-
 static void write_to_queue(struct queue_struct *q, uint32_t *buf,
-                           uint8_t cur_prio)
+                           uint32_t cur_prio)
 {
     memcpy(q->write, buf, (size_t)q->node_size);
     q->write += q->node_size;
@@ -36,7 +35,7 @@ static void write_to_queue(struct queue_struct *q, uint32_t *buf,
         Remove_IPC(t);
         TaskTreeAdd(t, Ready);
 
-        if (GetRespondLine(t) > cur_prio)
+        if (is_leisure() || compare_before(GetPrio(t), cur_prio))
             schedule();
     }
 
@@ -44,7 +43,7 @@ static void write_to_queue(struct queue_struct *q, uint32_t *buf,
 }
 
 static void extract_from_queue(struct queue_struct *q, uint32_t *buf,
-                               uint8_t cur_prio)
+                               uint32_t cur_prio)
 {
     q->read += q->node_size;
 
@@ -60,7 +59,7 @@ static void extract_from_queue(struct queue_struct *q, uint32_t *buf,
         Remove_IPC(t);
         TaskTreeAdd(t, Ready);
 
-        if (GetRespondLine(t) > cur_prio)
+        if (is_leisure() || compare_before(GetPrio(t), cur_prio))
             schedule();
     }
 
@@ -104,12 +103,12 @@ uint8_t queue_send(struct queue_struct *q, uint32_t *buf, uint32_t ticks)
 {
     uint32_t key;
     TaskHandle_t cur;
-    uint8_t prio;
+    uint32_t prio;
     uint8_t volatile pend;
 
     key = EnterCritical();
     cur = GetCurrentTCB();
-    prio = GetRespondLine(cur);
+    prio = GetPrio(cur);
 
     if (q->msg_num < q->node_num) {
         write_to_queue(q, buf, prio);
@@ -156,12 +155,12 @@ uint8_t queue_receive(struct queue_struct *q, uint32_t *buf, uint32_t ticks)
 {
     uint32_t key;
     TaskHandle_t cur;
-    uint8_t prio;
+    uint32_t prio;
     uint8_t volatile pend;
 
     key = EnterCritical();
     cur = GetCurrentTCB();
-    prio = GetRespondLine(cur);
+    prio = GetPrio(cur);
 
     if (q->msg_num > 0) {
         extract_from_queue(q, buf, prio);

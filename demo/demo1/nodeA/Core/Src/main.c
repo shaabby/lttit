@@ -60,6 +60,9 @@ void SystemClock_Config(void);
 #include "sem.h"
 #include "ccnet.h"
 #include "common.h"
+#include "shell.h"
+#include "fs_port.h"
+#include "comm.h"
 #include <stdio.h>
 #include <memory.h>
 
@@ -171,8 +174,19 @@ void process_rcv(void *ctx)
     }
 }
 
+
+void task_shell(void *ctx)
+{
+    while (1) {
+        TaskEnter();
+        shell_main();
+        TaskExit();
+    }
+}
+
 TaskHandle_t t2;
 TaskHandle_t t_process;
+TaskHandle_t t_shell;
 void APP(void)
 {
     ccnet_init(NODE_ID_A, NODE_COUNT);
@@ -188,10 +202,23 @@ void APP(void)
 
     __HAL_UART_CLEAR_OREFLAG(&huart2);
     HAL_UART_Receive_IT(&huart2, rcv_buf, 256);
-
+/*
     TaskCreate(rec_pc_input, 128, NULL, 5, 0, 50, &t2);
     TaskCreate(process_rcv, 128, NULL, 0, 0, 10, &t_process);
+*/
+    comm_init_uart(&huart1);
+    struct superblock sb;
+    fs_port_init();
 
+    if (fs_port_mount(&sb) != 0) {
+        printf("FS mount after format failed!\r\n");
+    }
+
+    printf("FS mounted OK!\r\n");
+    printf("Starting shell...\r\n");
+
+    HAL_Delay(100);
+    TaskCreate(task_shell, 256, NULL, 10, 0, 10, &t_process);
 }
 int main(void)
 {

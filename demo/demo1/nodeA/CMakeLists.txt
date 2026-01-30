@@ -45,6 +45,9 @@ file(GLOB MG_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/lttit/mg/source/*.c")
 file(GLOB CCNET_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/lttit/CSC/ccnet/source/*.c")
 file(GLOB SCP_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/lttit/CSC/scp/source/*.c")
 file(GLOB CCRPC_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/lttit/CSC/ccrpc/source/*.c")
+file(GLOB SHELL_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/lttit/shell/source/*.c")
+file(GLOB VIM_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/lttit/vim/source/*.c")
+file(GLOB FS_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/lttit/fs/source/*.c")
 
 add_executable(${CMAKE_PROJECT_NAME}
         ${RTOS_SOURCES}
@@ -54,8 +57,9 @@ add_executable(${CMAKE_PROJECT_NAME}
         ${CCNET_SOURCES}
         ${SCP_SOURCES}
         ${CCRPC_SOURCES}
-        lttit/shell/source/comm.c
-        lttit/shell/include/comm.h
+        ${SHELL_SOURCES}
+        ${VIM_SOURCES}
+        ${FS_SOURCES}
 
 )
 
@@ -70,6 +74,8 @@ include_directories(
         ${CMAKE_CURRENT_SOURCE_DIR}/lttit/CSC/scp/include
         ${CMAKE_CURRENT_SOURCE_DIR}/lttit/CSC/ccrpc/include
         ${CMAKE_CURRENT_SOURCE_DIR}/lttit/shell/include/
+        ${CMAKE_CURRENT_SOURCE_DIR}/lttit/fs/include/
+        ${CMAKE_CURRENT_SOURCE_DIR}/lttit/vim/include/
 )
 
 

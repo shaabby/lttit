@@ -1,6 +1,7 @@
 #include "sem.h"
 #include "heap.h"
 #include "port.h"
+#include "compare.h"
 #include "schedule.h"
 
 struct semaphore {
@@ -33,11 +34,11 @@ uint8_t semaphore_release(semaphore_handle sem)
 {
     uint32_t key;
     TaskHandle_t cur;
-    uint8_t prio;
+    uint32_t prio;
 
     key = EnterCritical();
     cur = GetCurrentTCB();
-    prio = GetRespondLine(cur);
+    prio = GetPrio(cur);
 
     if (sem->wait_tree.count) {
         TaskHandle_t t = FirstRespond_IPC(&sem->wait_tree);
@@ -45,8 +46,7 @@ uint8_t semaphore_release(semaphore_handle sem)
         DelayTreeRemove(t);
         Remove_IPC(t);
         TaskTreeAdd(t, Ready);
-
-        if (GetRespondLine(t) < prio)
+        if (is_leisure() || compare_before(GetPrio(t), prio))
             schedule();
     }
 

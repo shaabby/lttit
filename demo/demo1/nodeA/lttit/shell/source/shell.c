@@ -346,7 +346,7 @@ int cmd_ps(int argc, char **argv)
         const char *state_str =
                 (info.state == RUNNING)  ? "RUNNING"  :
                 (info.state == Ready)    ? "READY"    :
-                (info.state == Delay)  ? "DELAYED"  :
+                (info.state == OS_Delay)  ? "DELAYED"  :
                 (info.state == Suspend)? "SUSPEND"  :
                 (info.state == Dead)  ? "DELETED"  :
                 "UNKNOWN";
