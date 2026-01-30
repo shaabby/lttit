@@ -7,7 +7,7 @@
 #include "comm.h"
 #include "schedule.h"
 #include "heap.h"
-#include "ccnet.h"
+#include "scp.h"
 
 static char linebuf[SHELL_MAX_LINE];
 static char path[64];
@@ -132,14 +132,15 @@ int shell_readline(char *buf, int max)
         }
     }
 }
+
 void shell_main(void)
 {
     comm_write("> ", 2);
 
-    int len = shell_readline(linebuf, SHELL_MAX_LINE);
+    int len = shell_readline(linebuf, 20);
     if (len <= 0) return;
 
-    int argc = shell_parse(linebuf, argv_buf, SHELL_MAX_ARGS);
+    int argc = shell_parse(linebuf, argv_buf, 20);
     if (argc == 0) return;
 
     shell_exec(argc, argv_buf);
@@ -367,6 +368,7 @@ int cmd_ps(int argc, char **argv)
     return 0;
 }
 
+extern int scp_ccnet_send(void *user, const void *buf, size_t len);
 int cmd_remote(int argc, char **argv)
 {
     if (argc < 3) {
@@ -385,12 +387,7 @@ int cmd_remote(int argc, char **argv)
             strcat(buf, " ");
     }
 
-    struct ccnet_send_parameter csp;
-    csp.dst  = dst;
-    csp.ttl  = CCNET_TTL_DEFAULT;
-    csp.type = CCNET_TYPE_DATA;
-
-    ccnet_output(&csp, buf, strlen(buf));
+    scp_send(1, buf, strlen(buf));
 
     return 0;
 }

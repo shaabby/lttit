@@ -27,19 +27,19 @@ static int a = 0;
 static void scp_debug_dump_tx(const char *reason,
                               const void *buf, size_t len)
 {
-
+/*
     printf("\n[SCP TX] %s, a:%d\n", reason, a++);
     scp_debug_hex("TX Packet", buf, len); 
-
+*/
 }
 
 static int b = 0;
 static void scp_debug_dump_rx(const void *buf, size_t len)
 {
-
+/*
     printf("\n[SCP RX] %d\n", b++);
     scp_debug_hex("RX Packet", buf, len);
-
+*/
 }
 
 
@@ -436,12 +436,13 @@ void scp_output_ack(struct scp_stream *ss)
    free(sh);
 }
 
+
+static uint8_t packet[MTU];
 void scp_output_data(struct scp_stream *ss, struct scp_buf *sb,
                      uint32_t offset, uint32_t frag_len)
 {
     struct scp_hdr hdr;
 
-    uint8_t packet[MTU];
     memset(packet, 0, sizeof(packet));
 
     uint8_t *payload_base = sb->data + sizeof(struct scp_hdr);

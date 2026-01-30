@@ -63,6 +63,8 @@ void SystemClock_Config(void);
 #include "shell.h"
 #include "fs_port.h"
 #include "comm.h"
+#include "scp.h"
+#include "timer.h"
 #include <stdio.h>
 #include <memory.h>
 
@@ -88,6 +90,7 @@ semaphore_handle sem_process;
 #define START 0xA55AA55A
 #define CLOSE 0xDEAD5A5A
 
+uint8_t appbuf[256];
 void process(void)
 {
     int start = 0;
@@ -111,21 +114,59 @@ void process(void)
         struct ccnet_hdr *ch = (struct ccnet_hdr *) packet;
         uint16_t packet_len = ntohs(ch->len) + sizeof(struct ccnet_hdr);
         ccnet_input(NULL, packet, packet_len);
+        int rn = scp_recv(1, appbuf, sizeof(appbuf));
+        if (rn > 0) {
+            printf("NodeA recv from SCP: %s\n", appbuf);
+        }
     }
 }
+/* -------------------- HEX DEBUG -------------------- */
+static void scp_debug_hex(const char *tag, const void *buf, size_t len)
+{
+    const uint8_t *p = buf;
 
+    printf("---- %s (%u bytes) ----\r\n", tag, (unsigned)len);
 
+    for (size_t i = 0; i < len; i++) {
+        printf("%02X ", p[i]);
+        if ((i + 1) % 16 == 0)
+            printf("\r\n");
+    }
+    if (len % 16 != 0)
+        printf("\r\n");
+
+    printf("-----------------------------\r\n");
+}
+
+/* -------------------- NODE B PROVIDER -------------------- */
 static int nodeB_provider(void *ctx, void *data, size_t len)
 {
     (void)ctx;
+
+    /* ★ 打印原始 payload（SCP 包） */
+    scp_debug_hex("SCP TX RAW", data, len);
+
     memset(send_buf, 0, sizeof(send_buf));
+
+    /* START magic */
     uint32_t *p = (uint32_t *)send_buf;
     *p = START;
+
+    /* payload */
+    memcpy(send_buf + 4, data, len);
+
+    /* CLOSE magic */
     p = (uint32_t *)&send_buf[len + 4];
     *p = CLOSE;
-    memcpy(send_buf + 4, data, len);
+
+    /* ★ 打印最终 UART 帧（包含 START/CLOSE） */
+    scp_debug_hex("UART FRAME", send_buf, len + 8);
+
     HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_SET);
-    HAL_UART_Transmit(&huart2, (void *)send_buf, sizeof(send_buf), HAL_MAX_DELAY);
+
+    /* 发送完整 256 字节帧（你原来的逻辑） */
+    HAL_UART_Transmit(&huart2, send_buf, sizeof(send_buf), HAL_MAX_DELAY);
+
     return 0;
 }
 
@@ -161,11 +202,32 @@ void task_shell(void *ctx)
 
 TaskHandle_t t_process;
 TaskHandle_t t_shell;
+TaskHandle_t t_timer;
+
+int scp_ccnet_send(void *user, const void *buf, size_t len)
+{
+    struct ccnet_send_parameter csp = { 
+            .dst = 2,
+            .ttl = CCNET_TTL_DEFAULT,
+            .type = 1,
+    };
+    return ccnet_output(&csp, (void *)buf, (int)len);
+}
+
+
+#define scp_fd_AtoB 1
+#define scp_fd_BtoA 1
+struct scp_transport_class scp_trans = {
+        .send  = scp_ccnet_send,
+        .recv  = NULL,
+        .close = NULL,
+        .user  = NULL,
+};
 void APP(void)
 {
     ccnet_init(NODE_ID_A, NODE_COUNT);
 
-    ccnet_register_node_link(NODE_ID_A, pc_provider);
+    ccnet_register_node_link(NODE_ID_A, scp_input);
     ccnet_register_node_link(NODE_ID_B, nodeB_provider);
 
     ccnet_graph_set_edge(NODE_ID_A, NODE_ID_B, 1);
@@ -188,9 +250,13 @@ void APP(void)
     printf("FS mounted OK!\r\n");
     printf("Starting shell...\r\n");
 
+    scp_init(4);
+    scp_stream_alloc(&scp_trans, scp_fd_AtoB, scp_fd_AtoB);
+    //t_timer = TimerInit(128, 10, 10, 0);
+    //TimerCreat(timer_excu, 10, run);
     HAL_Delay(100);
-    TaskCreate(process_rcv, 128, NULL, 0, 0, 10, &t_process);
-    TaskCreate(task_shell, 256, NULL, 10, 0, 10, &t_shell);
+    TaskCreate(process_rcv, 128, NULL, 5, 0, 10, &t_process);
+    TaskCreate(task_shell, 800, NULL, 5, 0, 10, &t_shell);
 }
 int main(void)
 {
