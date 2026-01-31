@@ -236,8 +236,8 @@ void APP(void)
 
     scp_init(4);
     scp_stream_alloc(&scp_trans, scp_fd_AtoB, scp_fd_AtoB);
-    t_timer = TimerInit(256, 10, 0, 10);
-    TimerCreat(timer_excu, 1, run);
+    //t_timer = TimerInit(256, 10, 0, 10);
+    //TimerCreat(timer_excu, 1, run);
     HAL_Delay(100);
     TaskCreate(process_rcv, 256, NULL, 0, 0, 5, &t_process);
     TaskCreate(task_shell, 1024, NULL, 1, 10, 0, &t_shell);

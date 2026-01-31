@@ -28,19 +28,19 @@ static int a = 0;
 static void scp_debug_dump_tx(const char *reason,
                               const void *buf, size_t len)
 {
-/*
+
     printf("\n[SCP TX] %s, a:%d\n", reason, a++);
     scp_debug_hex("TX Packet", buf, len);
-*/
+
 }
 
 static int b = 0;
 static void scp_debug_dump_rx(const void *buf, size_t len)
 {
-/*
+
     printf("\n[SCP RX] %d\n", b++);
     scp_debug_hex("RX Packet", buf, len);
-*/
+
 }
 
 
@@ -91,6 +91,9 @@ struct scp_stream *scp_stream_alloc(struct scp_transport_class *st_class, int sr
             .snd_wnd  = SEND_WIN_INIT,
             .persist_backoff = SCP_RTO_MIN,
             .zero_wnd = 0,
+            .rcv_nxt = 0,
+            .snd_nxt = 0,
+            .snd_una = 0,
     };
     memset(ss->timer, 0, sizeof(ss->timer));
 
@@ -269,7 +272,6 @@ void scp_timer_process()
 
 }
 
-
 static void scp_process_data(struct scp_stream *s, struct scp_buf *sb)
 {
     struct scp_hdr *sh = (struct scp_hdr *)sb->data;
@@ -279,22 +281,16 @@ static void scp_process_data(struct scp_stream *s, struct scp_buf *sb)
     sb->seq = seq;
 
     if (SEQ_LT(seq, s->rcv_nxt)) {
-        scp_output(s, SCP_FLAG_ACK);
         scp_buf_heap_free(sb);
-        return;
-    }
-
-    if (SEQ_EQ(seq, s->rcv_nxt)) {
+    } else if (SEQ_EQ(seq, s->rcv_nxt)) {
         s->rcv_nxt += payload_len;
         queue_enqueue(&s->rcv_data_q, &sb->node);
         s->sb_cc += payload_len;
         scp_update_rcv_wnd(s);
-        goto try_reassemble;
-    }
-
-    if (SEQ_GT(seq, s->rcv_nxt)) {
+    } else if (SEQ_GT(seq, s->rcv_nxt)) {
         struct list_node *p;
         struct scp_buf *b;
+        int inserted = 0;
 
         for (p = s->rcv_buf_q.next; p != &s->rcv_buf_q; p = p->next) {
             b = container_of(p, struct scp_buf, node);
@@ -308,20 +304,18 @@ static void scp_process_data(struct scp_stream *s, struct scp_buf *sb)
                 list_add_prev(p, &sb->node);
                 s->sb_cc += payload_len;
                 scp_update_rcv_wnd(s);
-                goto try_reassemble;
+                inserted = 1;
+                break;
             }
         }
 
-        queue_enqueue(&s->rcv_buf_q, &sb->node);
-        s->sb_cc += payload_len;
-        scp_update_rcv_wnd(s);
-        goto try_reassemble;
+        if (!inserted) {
+            queue_enqueue(&s->rcv_buf_q, &sb->node);
+            s->sb_cc += payload_len;
+            scp_update_rcv_wnd(s);
+        }
     }
 
-    scp_buf_heap_free(sb);
-    return;
-
-    try_reassemble:
     while (!list_empty(&s->rcv_buf_q)) {
         struct scp_buf *b = container_of(s->rcv_buf_q.next, struct scp_buf, node);
         uint32_t plen = b->len - sizeof(struct scp_hdr);
@@ -333,11 +327,11 @@ static void scp_process_data(struct scp_stream *s, struct scp_buf *sb)
         queue_enqueue(&s->rcv_data_q, &b->node);
         s->rcv_nxt += plen;
         scp_update_rcv_wnd(s);
-
     }
 
     scp_output(s, SCP_FLAG_ACK);
 }
+
 
 static void scp_process_connect(struct scp_stream *ss, struct scp_buf *sb)
 {

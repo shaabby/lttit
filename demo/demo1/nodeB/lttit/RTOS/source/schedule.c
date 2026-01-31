@@ -476,6 +476,9 @@ void CheckTicks(void)
 
     NowTickCount++;
 
+    if (NowTickCount % 1000) {
+        scp_timer_process();
+    }
     if (SusPend) {
         uint32_t key = EnterCritical();
 

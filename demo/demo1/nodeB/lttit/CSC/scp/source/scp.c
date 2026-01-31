@@ -30,7 +30,7 @@ static void scp_debug_dump_tx(const char *reason,
 {
 
     printf("\n[SCP TX] %s, a:%d\n", reason, a++);
-    scp_debug_hex("TX Packet", buf, len); 
+    scp_debug_hex("TX Packet", buf, len);
 
 }
 
@@ -83,14 +83,17 @@ struct scp_stream *scp_stream_alloc(struct scp_transport_class *st_class, int sr
     }
 
     *ss = (struct scp_stream) {
-        .src_fd   = src_fd,
-        .dst_fd   = dst_fd,
-        .rto = SCP_RTO_MIN,
-        .sb_hiwat = SCP_RECV_LIMIT,    
-        .rcv_wnd  = RECV_WIN_INIT,
-        .snd_wnd  = SEND_WIN_INIT,  
-        .persist_backoff = SCP_RTO_MIN, 
-        .zero_wnd = 0, 
+            .src_fd   = src_fd,
+            .dst_fd   = dst_fd,
+            .rto = SCP_RTO_MIN,
+            .sb_hiwat = SCP_RECV_LIMIT,
+            .rcv_wnd  = RECV_WIN_INIT,
+            .snd_wnd  = SEND_WIN_INIT,
+            .persist_backoff = SCP_RTO_MIN,
+            .zero_wnd = 0,
+            .rcv_nxt = 0,
+            .snd_nxt = 0,
+            .snd_una = 0,
     };
     memset(ss->timer, 0, sizeof(ss->timer));
 
@@ -130,7 +133,7 @@ static void scp_update_rtt(struct scp_stream *s, uint32_t rtt_sample)
         s->srtt   = rtt_sample;
         s->rttvar = rtt_sample >> 1;
         s->rto    = s->srtt + (s->rttvar << 2);
-        if (s->rto < SCP_RTO_MIN) s->rto = SCP_RTO_MIN; 
+        if (s->rto < SCP_RTO_MIN) s->rto = SCP_RTO_MIN;
         return;
     }
 
@@ -143,7 +146,7 @@ static void scp_update_rtt(struct scp_stream *s, uint32_t rtt_sample)
 
     if (s->rto < SCP_RTO_MIN) {
         s->rto = SCP_RTO_MIN;
-    } 
+    }
 }
 
 static inline void scp_update_rcv_wnd(struct scp_stream *s)
@@ -157,13 +160,13 @@ static inline void scp_update_rcv_wnd(struct scp_stream *s)
 static void scp_send_window_probe(struct scp_stream *ss)
 {
     struct scp_hdr hdr = {
-        .seq   = htonl(ss->snd_nxt),  
-        .ack   = htonl(ss->rcv_nxt),
-        .wnd   = htons((uint16_t)ss->rcv_wnd),
-        .len   = 0,
-        .cksum = 0,
-        .flags = SCP_FLAG_PING,     
-        .fd    = ss->dst_fd,
+            .seq   = htonl(ss->snd_nxt),
+            .ack   = htonl(ss->rcv_nxt),
+            .wnd   = htons((uint16_t)ss->rcv_wnd),
+            .len   = 0,
+            .cksum = 0,
+            .flags = SCP_FLAG_PING,
+            .fd    = ss->dst_fd,
     };
 
     hdr.cksum = in_checksum(&hdr, sizeof(hdr));
@@ -230,7 +233,7 @@ void scp_timer_process()
 
     cur = scp_stream_queue.next;
     while (cur != &scp_stream_queue) {
-        next = cur->next;   
+        next = cur->next;
 
         struct scp_stream *ss = container_of(cur, struct scp_stream, node);
 
@@ -264,11 +267,10 @@ void scp_timer_process()
             }
         }
 
-        cur = next;  
+        cur = next;
     }
 
 }
-
 
 static void scp_process_data(struct scp_stream *s, struct scp_buf *sb)
 {
@@ -278,23 +280,17 @@ static void scp_process_data(struct scp_stream *s, struct scp_buf *sb)
 
     sb->seq = seq;
 
-    if (SEQ_LT(seq, s->rcv_nxt)) { 
-        scp_output(s, SCP_FLAG_ACK); 
-        scp_buf_heap_free(sb); 
-        return; 
-    }
-
-    if (SEQ_EQ(seq, s->rcv_nxt)) {
+    if (SEQ_LT(seq, s->rcv_nxt)) {
+        scp_buf_heap_free(sb);
+    } else if (SEQ_EQ(seq, s->rcv_nxt)) {
         s->rcv_nxt += payload_len;
         queue_enqueue(&s->rcv_data_q, &sb->node);
         s->sb_cc += payload_len;
         scp_update_rcv_wnd(s);
-        goto try_reassemble;
-    }
-
-    if (SEQ_GT(seq, s->rcv_nxt)) {
+    } else if (SEQ_GT(seq, s->rcv_nxt)) {
         struct list_node *p;
         struct scp_buf *b;
+        int inserted = 0;
 
         for (p = s->rcv_buf_q.next; p != &s->rcv_buf_q; p = p->next) {
             b = container_of(p, struct scp_buf, node);
@@ -308,20 +304,18 @@ static void scp_process_data(struct scp_stream *s, struct scp_buf *sb)
                 list_add_prev(p, &sb->node);
                 s->sb_cc += payload_len;
                 scp_update_rcv_wnd(s);
-                goto try_reassemble;
+                inserted = 1;
+                break;
             }
         }
 
-        queue_enqueue(&s->rcv_buf_q, &sb->node);
-        s->sb_cc += payload_len;
-        scp_update_rcv_wnd(s);
-        goto try_reassemble;
+        if (!inserted) {
+            queue_enqueue(&s->rcv_buf_q, &sb->node);
+            s->sb_cc += payload_len;
+            scp_update_rcv_wnd(s);
+        }
     }
 
-    scp_buf_heap_free(sb);
-    return;
-
-try_reassemble:
     while (!list_empty(&s->rcv_buf_q)) {
         struct scp_buf *b = container_of(s->rcv_buf_q.next, struct scp_buf, node);
         uint32_t plen = b->len - sizeof(struct scp_hdr);
@@ -333,11 +327,11 @@ try_reassemble:
         queue_enqueue(&s->rcv_data_q, &b->node);
         s->rcv_nxt += plen;
         scp_update_rcv_wnd(s);
-
     }
 
     scp_output(s, SCP_FLAG_ACK);
 }
+
 
 static void scp_process_connect(struct scp_stream *ss, struct scp_buf *sb)
 {
@@ -378,11 +372,11 @@ static void scp_process_ack(struct scp_stream *ss, uint32_t ack, uint32_t wnd, u
     }
     uint32_t old_una = ss->snd_una;
 
-    if (ss->rtt_ts != 0 && SEQ_GEQ(ack, ss->rtt_seq)) { 
-        uint32_t sample = scp_clock - ss->rtt_ts; 
-        if (sample == 0) sample = 1; // no 0 
-        scp_update_rtt(ss, sample); 
-        ss->rtt_ts = 0; 
+    if (ss->rtt_ts != 0 && SEQ_GEQ(ack, ss->rtt_seq)) {
+        uint32_t sample = scp_clock - ss->rtt_ts;
+        if (sample == 0) sample = 1; // no 0
+        scp_update_rtt(ss, sample);
+        ss->rtt_ts = 0;
     }
 
     ss->snd_una = ack;
@@ -390,15 +384,15 @@ static void scp_process_ack(struct scp_stream *ss, uint32_t ack, uint32_t wnd, u
 
     scp_snd_buf_heap_free(ss, ack);
 
-    if (SEQ_GT(ss->snd_una, old_una)) { 
-        ss->timeout_count = 0; 
-        if (ss->snd_una == ss->snd_nxt) { 
+    if (SEQ_GT(ss->snd_una, old_una)) {
+        ss->timeout_count = 0;
+        if (ss->snd_una == ss->snd_nxt) {
             // No data
-            ss->timer[TIMER_RETRANS] = 0; 
-        } else { 
+            ss->timer[TIMER_RETRANS] = 0;
+        } else {
             // data is flying
-            ss->timer[TIMER_RETRANS] = ss->rto; 
-        } 
+            ss->timer[TIMER_RETRANS] = ss->rto;
+        }
     }
 
     // zero wnd and persist backoff
@@ -409,13 +403,13 @@ static void scp_process_ack(struct scp_stream *ss, uint32_t ack, uint32_t wnd, u
             ss->timer[TIMER_PERSIST] = ss->persist_backoff;
         }
         if (ss->persist_backoff < 1000) {
-            ss->persist_backoff <<= 1;   
+            ss->persist_backoff <<= 1;
         }
     } else {
         //cloase persist
         ss->zero_wnd        = 0;
         ss->persist_backoff = 20;       // recovry persist
-        ss->timer[TIMER_PERSIST] = 0;   
+        ss->timer[TIMER_PERSIST] = 0;
     }
 
 }
@@ -423,23 +417,23 @@ static void scp_process_ack(struct scp_stream *ss, uint32_t ack, uint32_t wnd, u
 
 void scp_output_ack(struct scp_stream *ss)
 {
-   struct scp_hdr *sh = heap_malloc(sizeof(struct scp_hdr));
-   if (!sh) return;
+    struct scp_hdr *sh = heap_malloc(sizeof(struct scp_hdr));
+    if (!sh) return;
 
-   memset(sh, 0, sizeof(struct scp_hdr));
+    memset(sh, 0, sizeof(struct scp_hdr));
 
-   sh->seq = htonl(ss->snd_nxt);
-   sh->ack = htonl(ss->rcv_nxt);
-   sh->wnd = htons((uint16_t)ss->rcv_wnd);
-   sh->len = 0;
-   sh->flags = SCP_FLAG_ACK;
-   sh->fd = ss->dst_fd;
-   sh->cksum = in_checksum(sh, sizeof(struct scp_hdr));
+    sh->seq = htonl(ss->snd_nxt);
+    sh->ack = htonl(ss->rcv_nxt);
+    sh->wnd = htons((uint16_t)ss->rcv_wnd);
+    sh->len = 0;
+    sh->flags = SCP_FLAG_ACK;
+    sh->fd = ss->dst_fd;
+    sh->cksum = in_checksum(sh, sizeof(struct scp_hdr));
 
-   scp_debug_dump_tx("ACK", sh, sizeof(struct scp_hdr));
-   ss->st_class->send(ss->st_class->user, sh, sizeof(struct scp_hdr));
-   
-   heap_free(sh);
+    scp_debug_dump_tx("ACK", sh, sizeof(struct scp_hdr));
+    ss->st_class->send(ss->st_class->user, sh, sizeof(struct scp_hdr));
+
+    heap_free(sh);
 }
 
 static uint8_t scp_packet[MTU];
@@ -507,7 +501,7 @@ static int scp_output(struct scp_stream *ss, int flags)
             int64_t flight64 = (int64_t)ss->snd_nxt - (int64_t)ss->snd_una;
             if (flight64 < 0) {
                 flight64 = 0;
-            } 
+            }
             int32_t swnd = (int32_t)ss->snd_wnd - (int32_t)flight64;
             if (swnd < 0) {
                 swnd = 0;
@@ -533,7 +527,7 @@ static int scp_output(struct scp_stream *ss, int flags)
         }
     }
 
-out:
+    out:
     if (ss->timer[TIMER_RETRANS] == 0) {
         ss->timer[TIMER_RETRANS] = ss->rto;
         ss->timeout_count = 0;
@@ -551,16 +545,16 @@ int scp_send(int fd, void *buf, size_t len)
     ss = hashmap_get(&scp_stream_map, (void *)(uintptr_t)fd);
 
     if (!ss || (ss->state == SCP_CLOSED && ss->snd_nxt != 0)) {
-        return -1; 
+        return -1;
     }
 
     uint32_t flight = ss->snd_nxt - ss->snd_una;
     if (flight >= ss->snd_wnd) {
         return -2; // EWOULDBLOCK
     }
-    
+
     struct scp_buf *sb = scp_buf_alloc(sizeof(struct scp_buf) + sizeof(struct scp_hdr) + len);
-    sb->data = (uint8_t *)sb + sizeof(struct scp_buf); 
+    sb->data = (uint8_t *)sb + sizeof(struct scp_buf);
     sb->len = sizeof(struct scp_hdr) + len;
     sb->seq = ss->snd_nxt;
     //copy or not copy, this a question.
@@ -594,10 +588,10 @@ int scp_input(void *ctx, void *buf, size_t len)
 
     sh = (struct scp_hdr *)sb->data;
 
-    uint16_t calc = in_checksum(buf, len); 
-    if (calc != 0) { 
+    uint16_t calc = in_checksum(buf, len);
+    if (calc != 0) {
         scp_buf_heap_free(sb);
-        return -1; 
+        return -1;
     }
 
     uint32_t ack = ntohl(sh->ack);
@@ -610,26 +604,26 @@ int scp_input(void *ctx, void *buf, size_t len)
     }
 
     switch (sh->flags) {
-    case SCP_FLAG_DATA:
-        scp_process_data(ss, sb);
-        break;
+        case SCP_FLAG_DATA:
+            scp_process_data(ss, sb);
+            break;
 
-    case SCP_FLAG_CONNECT:
-        scp_process_connect(ss, sb);
-        break;
+        case SCP_FLAG_CONNECT:
+            scp_process_connect(ss, sb);
+            break;
 
-    case SCP_FLAG_ACK:
-        scp_process_ack(ss, ack, wnd, scp_clock);
-        scp_buf_heap_free(sb);  
-        break;
+        case SCP_FLAG_ACK:
+            scp_process_ack(ss, ack, wnd, scp_clock);
+            scp_buf_heap_free(sb);
+            break;
 
-    case SCP_FLAG_PING: 
-        scp_process_ack(ss, ack, wnd, scp_clock); 
-        scp_buf_heap_free(sb); 
-        break;
-    default:
-        scp_buf_heap_free(sb);
-        break;
+        case SCP_FLAG_PING:
+            scp_process_ack(ss, ack, wnd, scp_clock);
+            scp_buf_heap_free(sb);
+            break;
+        default:
+            scp_buf_heap_free(sb);
+            break;
     }
 
     return 0;

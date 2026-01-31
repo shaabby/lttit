@@ -112,7 +112,7 @@ TaskHandle_t t_timer;
 static void timer_excu(void *ctx)
 {
     (void)ctx;
-    scp_timer_process();
+    //scp_timer_process();
 }
 
 /* ---------- UART framing (START/CLOSE) ---------- */
@@ -303,8 +303,8 @@ void APP(void)
     HAL_UART_Receive_IT(&huart1, rcv_buf, 256);
 
     /* SCP timer task (RT) */
-    t_timer = TimerInit(512, 10, 0, 10);
-    TimerCreat(timer_excu, 5, run);
+    //t_timer = TimerInit(512, 10, 0, 10);
+    //TimerCreat(timer_excu, 5, run);
 
     /* UART¡úccnet/SCP feeder (BE) */
     TaskCreate(task_shell_rx, 512, NULL, 0, 0, 12, &t_shell);

@@ -475,6 +475,9 @@ void CheckTicks(void)
     struct rb_node *n;
 
     NowTickCount++;
+    if (NowTickCount % 1000) {
+        scp_timer_process();
+    }
 
     if (SusPend) {
         uint32_t key = EnterCritical();
