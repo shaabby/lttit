@@ -19,39 +19,42 @@
 typedef void (*TaskFunction_t)(void *);
 typedef struct TCB_t *TaskHandle_t;
 
-uint32_t TaskCreate(TaskFunction_t TaskCode,
-                    uint16_t StackDepth,
-                    void *Parameters,
-                    uint16_t period,
-                    uint8_t respondLine,
-                    uint16_t deadline,
-                    TaskHandle_t *self);
+uint32_t task_create(TaskFunction_t task_code,
+                     uint16_t stack_depth,
+                     void *parameters,
+                     uint16_t period,
+                     uint8_t respond_line,
+                     uint16_t deadline,
+                     TaskHandle_t *self);
 
-void TaskDelete(TaskHandle_t self);
-void TaskDelay(uint16_t ticks);
-uint32_t TaskEnter(void);
-uint32_t TaskExit(void);
-TaskHandle_t TaskFirstRespond(rb_root_handle root);
+void task_delete(TaskHandle_t self);
+void task_delay(uint16_t ticks);
+uint32_t task_enter(void);
+uint32_t task_exit(void);
 
 uint8_t is_leisure(void);
-void TaskTreeAdd(TaskHandle_t self, uint8_t State);
-void TaskTreeRemove(TaskHandle_t self, uint8_t State);
-void DelayTreeRemove(TaskHandle_t self);
 
-void Insert_IPC(TaskHandle_t self, rb_root_handle root);
-void Remove_IPC(TaskHandle_t self);
-TaskHandle_t FirstRespond_IPC(rb_root_handle root);
+void task_tree_add(TaskHandle_t self, uint8_t state);
+void task_tree_remove(TaskHandle_t self, uint8_t state);
+void delay_tree_remove(TaskHandle_t self);
 
-void SchedulerInit(void);
-void SchedulerStart(void);
+void insert_ipc(TaskHandle_t self, rb_root_handle root);
+void remove_ipc(TaskHandle_t self);
+TaskHandle_t first_respond_ipc(rb_root_handle root);
 
-uint8_t CheckIPCState(TaskHandle_t taskHandle);
+void scheduler_init(void);
+void scheduler_start(void);
 
-TaskHandle_t GetCurrentTCB(void);
-uint32_t GetPrio(TaskHandle_t self);
-uint32_t reset_ready_prio(TaskHandle_t self, uint32_t prio);
+uint8_t check_ipc_state(TaskHandle_t task_handle);
 
-void CheckTicks(void);
+TaskHandle_t get_current_tcb(void);
+
+void adt_tree_init(void);
+void tree_delay_init(void);
+void record_wake_time(uint16_t ticks);
+void check_ticks(void);
+
+int sched_should_preempt(TaskHandle_t new_task, TaskHandle_t cur_task);
 
 struct task_info {
     uint32_t pid;
@@ -64,4 +67,3 @@ struct task_info {
 int rtos_get_task_info(uint32_t pid, struct task_info *out);
 
 #endif
-

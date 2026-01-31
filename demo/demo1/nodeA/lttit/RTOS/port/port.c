@@ -93,7 +93,7 @@ __attribute__( ( naked ) ) void PendSV_Handler( void )
             "	msr basepri, r0						\n"
             "   dsb                                 \n"
             "   isb                                 \n"
-            "	bl TaskSwitchContext				\n"
+            "	bl task_switch_context				\n"
             "	mov r0, #0							\n"
             "	msr basepri, r0						\n"
             "	ldmia sp!, {r3, r14}				\n"
@@ -187,7 +187,7 @@ void SysTick_Handler(void)
 {
     uint32_t xre = EnterCritical();
 
-    CheckTicks();
+    check_ticks();
 
     ExitCritical(xre);
 }

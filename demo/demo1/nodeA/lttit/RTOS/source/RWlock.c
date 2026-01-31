@@ -22,10 +22,10 @@ rwlock_handle rwlock_creat(void)
         return NULL;
 
     *lock = (struct rwlock){
-            .read = semaphore_creat(0),
-            .write = semaphore_creat(0),
-            .w_guard = semaphore_creat(1),
-            .c_guard = semaphore_creat(1),
+            .read = semaphore_create(0),
+            .write = semaphore_create(0),
+            .w_guard = semaphore_create(1),
+            .c_guard = semaphore_create(1),
             .active_reader = 0,
             .reading_reader = 0,
             .active_writer = 0,

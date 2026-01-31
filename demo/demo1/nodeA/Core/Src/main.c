@@ -158,11 +158,11 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 void process_rcv(void *ctx)
 {
     while (1) {
-        TaskEnter();
+        task_enter();
         if (semaphore_take(sem_process, 1000) == true) {
             process();
         }
-        TaskExit();
+        task_exit();
     }
 }
 
@@ -170,9 +170,9 @@ void process_rcv(void *ctx)
 void task_shell(void *ctx)
 {
     while (1) {
-        TaskEnter();
+        task_enter();
         shell_main();
-        TaskExit();
+        task_exit();
     }
 }
 
@@ -218,7 +218,7 @@ void APP(void)
     ccnet_graph_set_edge(NODE_ID_B, NODE_ID_A, 1);
 
     ccnet_build_routing_table();
-    sem_process = semaphore_creat(0);
+    sem_process = semaphore_create(0);
 
     __HAL_UART_CLEAR_OREFLAG(&huart2);
     HAL_UART_Receive_IT(&huart2, rcv_buf, 256);
@@ -236,11 +236,11 @@ void APP(void)
 
     scp_init(4);
     scp_stream_alloc(&scp_trans, scp_fd_AtoB, scp_fd_AtoB);
-    //t_timer = TimerInit(256, 10, 0, 10);
-    //TimerCreat(timer_excu, 1, run);
+    t_timer = timer_init(256, 10, 0, 10);
+    timer_create(timer_excu, 1, run);
     HAL_Delay(100);
-    TaskCreate(process_rcv, 256, NULL, 0, 0, 5, &t_process);
-    TaskCreate(task_shell, 1024, NULL, 1, 10, 0, &t_shell);
+    task_create(process_rcv, 256, NULL, 0, 10, 0, &t_process);
+    task_create(task_shell, 1024, NULL, 1, 10, 0, &t_shell);
 }
 
 int main(void)
@@ -252,9 +252,9 @@ int main(void)
     MX_USART1_UART_Init();
     MX_USART2_UART_Init();
 
-    SchedulerInit();
+    scheduler_init();
     APP();
-    SchedulerStart();
+    scheduler_start();
 
     while (1) {}
 }

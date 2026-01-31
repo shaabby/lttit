@@ -6,7 +6,7 @@
 struct semaphore;
 typedef struct semaphore *semaphore_handle;
 
-semaphore_handle semaphore_creat(uint8_t value);
+semaphore_handle semaphore_create(uint8_t value);
 void semaphore_delete(semaphore_handle sem);
 uint8_t semaphore_release(semaphore_handle sem);
 uint8_t semaphore_take(semaphore_handle sem, uint32_t ticks);

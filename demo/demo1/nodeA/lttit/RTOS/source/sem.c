@@ -1,15 +1,17 @@
 #include "sem.h"
 #include "heap.h"
 #include "port.h"
-#include "compare.h"
 #include "schedule.h"
+#include "rbtree.h"
 
 struct semaphore {
     uint8_t value;
     struct rb_root wait_tree;
 };
 
-semaphore_handle semaphore_creat(uint8_t value)
+extern uint8_t schedule_PendSV;
+
+semaphore_handle semaphore_create(uint8_t value)
 {
     struct semaphore *sem;
 
@@ -28,25 +30,22 @@ void semaphore_delete(semaphore_handle sem)
     heap_free(sem);
 }
 
-extern uint8_t schedule_PendSV;
-
 uint8_t semaphore_release(semaphore_handle sem)
 {
     uint32_t key;
     TaskHandle_t cur;
-    uint32_t prio;
 
     key = EnterCritical();
-    cur = GetCurrentTCB();
-    prio = GetPrio(cur);
+    cur = get_current_tcb();
 
     if (sem->wait_tree.count) {
-        TaskHandle_t t = FirstRespond_IPC(&sem->wait_tree);
+        TaskHandle_t t = first_respond_ipc(&sem->wait_tree);
 
-        DelayTreeRemove(t);
-        Remove_IPC(t);
-        TaskTreeAdd(t, Ready);
-        if (is_leisure() || compare_before(GetPrio(t), prio))
+        delay_tree_remove(t);
+        remove_ipc(t);
+        task_tree_add(t, Ready);
+
+        if (sched_should_preempt(t, cur))
             schedule();
     }
 
@@ -63,7 +62,8 @@ uint8_t semaphore_take(semaphore_handle sem, uint32_t ticks)
     uint8_t volatile pend;
 
     key = EnterCritical();
-    cur = GetCurrentTCB();
+    cur = get_current_tcb();
+    pend = schedule_PendSV;
 
     if (sem->value > 0) {
         sem->value--;
@@ -76,12 +76,10 @@ uint8_t semaphore_take(semaphore_handle sem, uint32_t ticks)
         return 0;
     }
 
-    pend = schedule_PendSV;
+    insert_ipc(cur, &sem->wait_tree);
 
-    if (ticks > 0) {
-        Insert_IPC(cur, &sem->wait_tree);
-        TaskDelay(ticks);
-    }
+    if (ticks > 0)
+        task_delay(ticks);
 
     ExitCritical(key);
 
@@ -90,14 +88,19 @@ uint8_t semaphore_take(semaphore_handle sem, uint32_t ticks)
 
     key = EnterCritical();
 
-    if (!CheckIPCState(cur)) {
-        Remove_IPC(cur);
+    if (!check_ipc_state(cur)) {
+        remove_ipc(cur);
         ExitCritical(key);
         return 0;
     }
 
-    sem->value--;
-    ExitCritical(key);
+    if (sem->value > 0)
+        sem->value--;
+    else {
+        ExitCritical(key);
+        return 0;
+    }
 
+    ExitCritical(key);
     return 1;
 }
