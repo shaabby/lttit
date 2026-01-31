@@ -26,6 +26,7 @@ struct scp_buf {
     size_t len;
     uint32_t seq; // save it from hdr.
     uint8_t *data;
+    uint32_t payload_off;
 };
 
 struct scp_hdr {

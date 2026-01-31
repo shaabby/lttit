@@ -2,6 +2,7 @@
 #include "hashmap.h"
 #include "queue.h"
 #include "common.h"
+#include "heap.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -55,7 +56,7 @@ void scp_output_data(struct scp_stream *ss, struct scp_buf *sb,
 
 static struct scp_buf *scp_buf_alloc(uint32_t len)
 {
-    struct scp_buf *sb = malloc(len);
+    struct scp_buf *sb = heap_malloc(len);
     if (!sb) return NULL;
 
     memset(sb, 0, len);
@@ -66,17 +67,17 @@ static struct scp_buf *scp_buf_alloc(uint32_t len)
     return sb;
 }
 
-static void scp_buf_free(struct scp_buf *b)
+static void scp_buf_heap_free(struct scp_buf *b)
 {
     if (!b) {
         return;
     }
-    free(b);
+    heap_free(b);
 }
 
 struct scp_stream *scp_stream_alloc(struct scp_transport_class *st_class, int src_fd, int dst_fd)
 {
-    struct scp_stream *ss = malloc(sizeof(struct scp_stream));
+    struct scp_stream *ss = heap_malloc(sizeof(struct scp_stream));
     if (!ss) {
         return NULL;
     }
@@ -105,14 +106,14 @@ struct scp_stream *scp_stream_alloc(struct scp_transport_class *st_class, int sr
     return ss;
 }
 
-int scp_stream_free(struct scp_stream *ss)
+int scp_stream_heap_free(struct scp_stream *ss)
 {
     if (!ss) {
         return -1;
     }
     list_remove(&ss->node);
     hashmap_remove(&scp_stream_map, (void *)(uintptr_t)(ss->src_fd));
-    free(ss);
+    heap_free(ss);
     return 0;
 }
 
@@ -173,19 +174,20 @@ static void scp_send_window_probe(struct scp_stream *ss)
 
 void scp_keeplive(struct scp_stream *ss)
 {
-    struct scp_hdr *hdr = malloc(sizeof(struct scp_hdr));
-    *hdr = (struct scp_hdr){ 
-        .seq = ss->snd_nxt, 
-        .ack = ss->rcv_nxt, 
-        .wnd = htons((uint16_t)ss->rcv_wnd),
-        .len = 0, 
-        .flags = SCP_FLAG_PING, 
-        .fd = ss->src_fd,
-    }; 
+    struct scp_hdr *hdr = heap_malloc(sizeof(struct scp_hdr));
+    *hdr = (struct scp_hdr){
+            .seq = htonl(ss->snd_nxt),
+            .ack = htonl(ss->rcv_nxt),
+            .wnd = htons((uint16_t)ss->rcv_wnd),
+            .len = 0,
+            .flags = SCP_FLAG_PING,
+            .fd = ss->dst_fd,
+    };
+    hdr->cksum = in_checksum(hdr, sizeof(struct scp_hdr));
 
     ss->st_class->send(ss->st_class->user, hdr, sizeof(struct scp_hdr));
 
-    free(hdr);
+    heap_free(hdr);
 }
 
 static void scp_retransmit(struct scp_stream *ss)
@@ -272,12 +274,13 @@ static void scp_process_data(struct scp_stream *s, struct scp_buf *sb)
 {
     struct scp_hdr *sh = (struct scp_hdr *)sb->data;
     uint32_t seq = ntohl(sh->seq);
-    uint32_t payload_len = sb->len - sizeof(struct scp_hdr);
+    uint32_t payload_len = ntohs(sh->len);
+
     sb->seq = seq;
 
     if (SEQ_LT(seq, s->rcv_nxt)) { 
         scp_output(s, SCP_FLAG_ACK); 
-        scp_buf_free(sb); 
+        scp_buf_heap_free(sb); 
         return; 
     }
 
@@ -297,7 +300,7 @@ static void scp_process_data(struct scp_stream *s, struct scp_buf *sb)
             b = container_of(p, struct scp_buf, node);
 
             if (SEQ_EQ(seq, b->seq)) {
-                scp_buf_free(sb);
+                scp_buf_heap_free(sb);
                 return;
             }
 
@@ -315,7 +318,7 @@ static void scp_process_data(struct scp_stream *s, struct scp_buf *sb)
         goto try_reassemble;
     }
 
-    scp_buf_free(sb);
+    scp_buf_heap_free(sb);
     return;
 
 try_reassemble:
@@ -344,7 +347,7 @@ static void scp_process_connect(struct scp_stream *ss, struct scp_buf *sb)
 }
 
 
-void scp_snd_buf_free(struct scp_stream *ss, uint32_t ack)
+void scp_snd_buf_heap_free(struct scp_stream *ss, uint32_t ack)
 {
     struct list_node *cur = ss->snd_q.next;
 
@@ -357,7 +360,7 @@ void scp_snd_buf_free(struct scp_stream *ss, uint32_t ack)
 
         if (SEQ_LEQ(end_seq, ack)) {
             list_remove(cur);
-            scp_buf_free(sb);
+            scp_buf_heap_free(sb);
         }
 
         cur = next;
@@ -385,7 +388,7 @@ static void scp_process_ack(struct scp_stream *ss, uint32_t ack, uint32_t wnd, u
     ss->snd_una = ack;
     ss->snd_wnd = wnd;
 
-    scp_snd_buf_free(ss, ack);
+    scp_snd_buf_heap_free(ss, ack);
 
     if (SEQ_GT(ss->snd_una, old_una)) { 
         ss->timeout_count = 0; 
@@ -420,29 +423,32 @@ static void scp_process_ack(struct scp_stream *ss, uint32_t ack, uint32_t wnd, u
 
 void scp_output_ack(struct scp_stream *ss)
 {
-   struct scp_hdr *sh = malloc(sizeof(struct scp_hdr));
+   struct scp_hdr *sh = heap_malloc(sizeof(struct scp_hdr));
    if (!sh) return;
-    
+
+   memset(sh, 0, sizeof(struct scp_hdr));
+
+   sh->seq = htonl(ss->snd_nxt);
    sh->ack = htonl(ss->rcv_nxt);
-   sh->fd = ss->dst_fd;
-   sh->flags = SCP_FLAG_ACK;
+   sh->wnd = htons((uint16_t)ss->rcv_wnd);
    sh->len = 0;
-   sh->wnd = htons(ss->rcv_wnd);
+   sh->flags = SCP_FLAG_ACK;
+   sh->fd = ss->dst_fd;
    sh->cksum = in_checksum(sh, sizeof(struct scp_hdr));
 
    scp_debug_dump_tx("ACK", sh, sizeof(struct scp_hdr));
    ss->st_class->send(ss->st_class->user, sh, sizeof(struct scp_hdr));
    
-   free(sh);
+   heap_free(sh);
 }
 
+static uint8_t scp_packet[MTU];
 void scp_output_data(struct scp_stream *ss, struct scp_buf *sb,
                      uint32_t offset, uint32_t frag_len)
 {
     struct scp_hdr hdr;
 
-    uint8_t packet[MTU];
-    memset(packet, 0, sizeof(packet));
+    memset(scp_packet, 0, sizeof(scp_packet));
 
     uint8_t *payload_base = sb->data + sizeof(struct scp_hdr);
     uint8_t *frag_payload = payload_base + offset;
@@ -455,15 +461,15 @@ void scp_output_data(struct scp_stream *ss, struct scp_buf *sb,
     hdr.flags = SCP_FLAG_DATA;
     hdr.fd    = ss->dst_fd;
 
-    memcpy(packet, &hdr, sizeof(struct scp_hdr));
-    memcpy(packet + sizeof(struct scp_hdr), frag_payload, frag_len);
+    memcpy(scp_packet, &hdr, sizeof(struct scp_hdr));
+    memcpy(scp_packet + sizeof(struct scp_hdr), frag_payload, frag_len);
 
-    hdr.cksum = in_checksum(packet, sizeof(struct scp_hdr) + frag_len);
-    memcpy(packet, &hdr, sizeof(struct scp_hdr));
+    hdr.cksum = in_checksum(scp_packet, sizeof(struct scp_hdr) + frag_len);
+    memcpy(scp_packet, &hdr, sizeof(struct scp_hdr));
 
-    scp_debug_dump_tx("DATA", packet, sizeof(struct scp_hdr) + frag_len);
+    scp_debug_dump_tx("DATA", scp_packet, sizeof(struct scp_hdr) + frag_len);
     ss->st_class->send(ss->st_class->user,
-                       packet,
+                       scp_packet,
                        sizeof(struct scp_hdr) + frag_len);
 }
 
@@ -590,7 +596,7 @@ int scp_input(void *ctx, void *buf, size_t len)
 
     uint16_t calc = in_checksum(buf, len); 
     if (calc != 0) { 
-        scp_buf_free(sb);
+        scp_buf_heap_free(sb);
         return -1; 
     }
 
@@ -599,7 +605,7 @@ int scp_input(void *ctx, void *buf, size_t len)
 
     ss = hashmap_get(&scp_stream_map, (void *)(uintptr_t)sh->fd);
     if (!ss) {
-        scp_buf_free(sb);
+        scp_buf_heap_free(sb);
         return -1;
     }
 
@@ -614,15 +620,15 @@ int scp_input(void *ctx, void *buf, size_t len)
 
     case SCP_FLAG_ACK:
         scp_process_ack(ss, ack, wnd, scp_clock);
-        scp_buf_free(sb);  
+        scp_buf_heap_free(sb);  
         break;
 
     case SCP_FLAG_PING: 
         scp_process_ack(ss, ack, wnd, scp_clock); 
-        scp_buf_free(sb); 
+        scp_buf_heap_free(sb); 
         break;
     default:
-        scp_buf_free(sb);
+        scp_buf_heap_free(sb);
         break;
     }
 
@@ -638,7 +644,7 @@ void scp_close(int fd)
     list_remove(&ss->node);
     hashmap_remove(&scp_stream_map, (void *)(uintptr_t)fd);
 
-    free(ss);
+    heap_free(ss);
 }
 
 int scp_recv(int fd, void *buf, size_t len)
@@ -654,21 +660,21 @@ int scp_recv(int fd, void *buf, size_t len)
         struct list_node *n = s->rcv_data_q.next;
         struct scp_buf *sb = container_of(n, struct scp_buf, node);
 
-        uint32_t payload_len = sb->len - sizeof(struct scp_hdr);
+        uint32_t total_payload = sb->len - sizeof(struct scp_hdr);
+        uint32_t payload_len   = total_payload - sb->payload_off;
+
         uint32_t take = (uint32_t)min(len - copied, payload_len);
 
-        uint8_t *payload = sb->data + sizeof(struct scp_hdr);
+        uint8_t *payload = sb->data + sizeof(struct scp_hdr) + sb->payload_off;
+
         memcpy(dst + copied, payload, take);
         copied += take;
 
         if (take == payload_len) {
             list_remove(n);
-            scp_buf_free(sb);
+            scp_buf_heap_free(sb);
         } else {
-            sb->len -= take;
-            memmove(sb->data + sizeof(struct scp_hdr),
-                    sb->data + sizeof(struct scp_hdr) + take,
-                    payload_len - take);
+            sb->payload_off += take;
         }
     }
 
@@ -681,7 +687,6 @@ int scp_recv(int fd, void *buf, size_t len)
     uint32_t old_wnd = s->rcv_wnd;
     scp_update_rcv_wnd(s);
 
-    // fix: persist
     if (old_wnd == 0 && s->rcv_wnd > 0) {
         scp_output(s, SCP_FLAG_ACK);
     }

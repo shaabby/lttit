@@ -12,7 +12,6 @@ struct timer_obj {
 };
 
 struct rb_root clock_tree;
-static uint16_t timer_check_period;
 extern uint32_t NowTickCount;
 
 static void clock_tree_add(struct timer_obj *t)
@@ -35,12 +34,8 @@ static void timer_check(void)
     for (;;) {
         TaskEnter();
 
-        struct rb_node *n = clock_tree.first_node;
-        struct rb_node *next;
-
-        while (n && compare_before_eq(n->value, NowTickCount)) {
-            next = rb_next(n);
-
+        struct rb_node *n;
+        while ((n = clock_tree.first_node) && compare_before_eq(n->value, NowTickCount)) {
             struct timer_obj *t =
             container_of(n, struct timer_obj, node);
 
@@ -50,8 +45,6 @@ static void timer_check(void)
 
             if (t->stop_flag == run)
                 clock_tree_add(t);
-
-            n = next;
         }
 
         TaskExit();
@@ -59,8 +52,7 @@ static void timer_check(void)
 }
 
 TaskHandle_t TimerInit(uint16_t stack, uint16_t period,
-                       uint8_t respond_line, uint32_t deadline,
-                       uint8_t check_period)
+                       uint8_t respond_line, uint32_t deadline)
 {
     TaskHandle_t self = NULL;
 
@@ -73,8 +65,6 @@ TaskHandle_t TimerInit(uint16_t stack, uint16_t period,
                respond_line,
                deadline,
                &self);
-
-    timer_check_period = NowTickCount + check_period;
 
     return self;
 }

@@ -11,7 +11,7 @@
 #define SCP_RECV_LIMIT 0xFFFF
 #define SEND_WIN_INIT 0xFFFF
 #define RECV_WIN_INIT     0xFFFF 
-#define MTU 1500
+#define MTU 256
 
 
 struct scp_transport_class {
@@ -25,7 +25,8 @@ struct scp_buf {
     struct list_node node;
     size_t len;
     uint32_t seq; // save it from hdr.
-    uint8_t *data; 
+    uint8_t *data;
+    uint32_t payload_off;
 };
 
 struct scp_hdr {

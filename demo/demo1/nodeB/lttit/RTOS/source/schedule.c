@@ -22,7 +22,9 @@ extern void ErrorHandle(void);
 extern uint32_t EnterCritical(void);
 extern void ExitCritical(uint32_t xReturn);
 
-struct rb_root ReadyTree;
+/* Two separate ready queues: one for RT tasks, one for BE tasks */
+struct rb_root ReadyRTTree;   // RT tasks (deadline-based)
+struct rb_root ReadyBETree;   // BE tasks (best-effort)
 struct rb_root WakeTicksTree;
 struct rb_root SuspendTree;
 struct rb_root DeleteTree;
@@ -62,16 +64,21 @@ static inline uint8_t task_is_rt(TaskHandle_t t)
     return t->deadline != 0;
 }
 
+/* RT tasks: priority is based on remaining time to deadline */
 static inline uint32_t rt_prio_value(TaskHandle_t t)
 {
-    return t->abs_deadline;
+    uint32_t remain = t->abs_deadline - NowTickCount;
+    return remain;
 }
 
+/* BE tasks: priority is based on respondLine + global congestion */
 static inline uint32_t be_prio_value(TaskHandle_t t)
 {
-    return NowTickCount + t->respondLine + global_congestion;
+    uint32_t load = t->respondLine + global_congestion;
+    return load;
 }
 
+/* Used only where a generic priority is needed (e.g. IPC tree) */
 static inline uint32_t calc_task_prio(TaskHandle_t t)
 {
     if (task_is_rt(t))
@@ -90,6 +97,7 @@ uint32_t GetPrio(TaskHandle_t self)
     return self->task_node.value;
 }
 
+/* For BE/RT tasks, this will reinsert into the correct ready tree */
 uint32_t reset_ready_prio(TaskHandle_t self, uint32_t prio)
 {
     TaskTreeRemove(self, Ready);
@@ -115,21 +123,42 @@ TaskHandle_t FirstRespond_IPC(rb_root_handle root)
     return container_of(n, struct TCB_t, IPC_node);
 }
 
-static void ReadyTreeAdd(struct rb_node *node)
+/* Add RT task into RT ready tree */
+static void ReadyRTTreeAdd(struct rb_node *node)
 {
     TaskHandle_t self = container_of(node, struct TCB_t, task_node);
-    uint32_t prio = calc_task_prio(self);
-    node->root = &ReadyTree;
+    uint32_t prio = rt_prio_value(self);
+    node->root = &ReadyRTTree;
     node->value = prio;
-    rb_insert_node(&ReadyTree, node);
-    sched_log("[READY] pid=%lu prio=%lu\n", self->pid, prio);
+    rb_insert_node(&ReadyRTTree, node);
+    sched_log("[READY-RT] pid=%lu prio=%lu\n", self->pid, prio);
 }
 
-static void ReadyTreeRemove(struct rb_node *node)
+/* Add BE task into BE ready tree */
+static void ReadyBETreeAdd(struct rb_node *node)
 {
     TaskHandle_t self = container_of(node, struct TCB_t, task_node);
-    rb_remove_node(&ReadyTree, node);
-    sched_log("[REMOVE] pid=%lu\n", self->pid);
+    uint32_t prio = be_prio_value(self);
+    node->root = &ReadyBETree;
+    node->value = prio;
+    rb_insert_node(&ReadyBETree, node);
+    sched_log("[READY-BE] pid=%lu prio=%lu\n", self->pid, prio);
+}
+
+/* Remove RT task from RT ready tree */
+static void ReadyRTTreeRemove(struct rb_node *node)
+{
+    TaskHandle_t self = container_of(node, struct TCB_t, task_node);
+    rb_remove_node(&ReadyRTTree, node);
+    sched_log("[REMOVE-RT] pid=%lu\n", self->pid);
+}
+
+/* Remove BE task from BE ready tree */
+static void ReadyBETreeRemove(struct rb_node *node)
+{
+    TaskHandle_t self = container_of(node, struct TCB_t, task_node);
+    rb_remove_node(&ReadyBETree, node);
+    sched_log("[REMOVE-BE] pid=%lu\n", self->pid);
 }
 
 static void SuspendTreeAdd(struct rb_node *node)
@@ -147,11 +176,16 @@ void TaskTreeAdd(TaskHandle_t self, uint8_t State)
 {
     uint32_t key = EnterCritical();
     struct rb_node *node = &self->task_node;
-    void (*TreeAdd[])(struct rb_node *node) = {
-            ReadyTreeAdd,
-            SuspendTreeAdd
-    };
-    TreeAdd[State](node);
+
+    if (State == Ready) {
+        if (task_is_rt(self))
+            ReadyRTTreeAdd(node);
+        else
+            ReadyBETreeAdd(node);
+    } else {
+        SuspendTreeAdd(node);
+    }
+
     ExitCritical(key);
 }
 
@@ -159,11 +193,16 @@ void TaskTreeRemove(TaskHandle_t self, uint8_t State)
 {
     uint32_t key = EnterCritical();
     struct rb_node *node = &self->task_node;
-    void (*TreeRemove[])(struct rb_node *node) = {
-            ReadyTreeRemove,
-            SuspendTreeRemove
-    };
-    TreeRemove[State](node);
+
+    if (State == Ready) {
+        if (task_is_rt(self))
+            ReadyRTTreeRemove(node);
+        else
+            ReadyBETreeRemove(node);
+    } else {
+        SuspendTreeRemove(node);
+    }
+
     ExitCritical(key);
 }
 
@@ -185,7 +224,8 @@ void Remove_IPC(TaskHandle_t self)
 
 void ADTTreeInit(void)
 {
-    rb_root_init(&ReadyTree);
+    rb_root_init(&ReadyRTTree);
+    rb_root_init(&ReadyBETree);
     rb_root_init(&SuspendTree);
     rb_root_init(&DeleteTree);
 }
@@ -404,10 +444,13 @@ void TaskSwitchContext(void)
     if (schedule_currentTCB)
         rtos_stack_used(schedule_currentTCB);
 
-    if (ReadyTree.count == 0)
-        schedule_currentTCB = leisureTcb;
+    /* RT tasks always have higher priority than BE tasks */
+    if (ReadyRTTree.count > 0)
+        schedule_currentTCB = TaskFirstRespond(&ReadyRTTree);
+    else if (ReadyBETree.count > 0)
+        schedule_currentTCB = TaskFirstRespond(&ReadyBETree);
     else
-        schedule_currentTCB = TaskFirstRespond(&ReadyTree);
+        schedule_currentTCB = leisureTcb;
 
     sched_log("[CTX] %lu -> %lu\n",
               old ? old->pid : 0,
@@ -450,10 +493,23 @@ void CheckTicks(void)
 
             sched_log("[WAKE] pid=%lu at tick=%lu\n", self->pid, NowTickCount);
 
-            if (schedule_currentTCB == leisureTcb ||
-                compare_before_eq(self->task_node.value,
-                                  schedule_currentTCB->task_node.value))
+            /* Preemption rule:
+             * - If current is leisure, always schedule.
+             * - If new is RT and current is BE, schedule.
+             * - If both RT, compare abs_deadline.
+             * - If both BE, compare respondLine.
+             */
+            if (schedule_currentTCB == leisureTcb) {
                 schedule();
+            } else if (task_is_rt(self) && !task_is_rt(schedule_currentTCB)) {
+                schedule();
+            } else if (task_is_rt(self) && task_is_rt(schedule_currentTCB)) {
+                if (self->abs_deadline < schedule_currentTCB->abs_deadline)
+                    schedule();
+            } else if (!task_is_rt(self) && !task_is_rt(schedule_currentTCB)) {
+                if (self->respondLine < schedule_currentTCB->respondLine)
+                    schedule();
+            }
         }
 
         ExitCritical(key);
@@ -465,7 +521,8 @@ uint8_t get_task_state(TaskHandle_t tcb)
     if (tcb == schedule_currentTCB)
         return RUNNING;
 
-    if (tcb->task_node.root == &ReadyTree)
+    if (tcb->task_node.root == &ReadyRTTree ||
+        tcb->task_node.root == &ReadyBETree)
         return Ready;
 
     if (tcb->task_node.root == &WakeTicksTree)

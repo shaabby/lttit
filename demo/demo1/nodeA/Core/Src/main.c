@@ -113,39 +113,19 @@ void process(void)
         memcpy(packet, start_data, len);
         struct ccnet_hdr *ch = (struct ccnet_hdr *) packet;
         uint16_t packet_len = ntohs(ch->len) + sizeof(struct ccnet_hdr);
+
         ccnet_input(NULL, packet, packet_len);
+        memset(appbuf, 0, sizeof(appbuf));
         int rn = scp_recv(1, appbuf, sizeof(appbuf));
         if (rn > 0) {
-            printf("NodeA recv from SCP: %s\n", appbuf);
+            printf("NodeA recv from SCP: %s\r\n", appbuf);
         }
     }
 }
-/* -------------------- HEX DEBUG -------------------- */
-static void scp_debug_hex(const char *tag, const void *buf, size_t len)
-{
-    const uint8_t *p = buf;
-
-    printf("---- %s (%u bytes) ----\r\n", tag, (unsigned)len);
-
-    for (size_t i = 0; i < len; i++) {
-        printf("%02X ", p[i]);
-        if ((i + 1) % 16 == 0)
-            printf("\r\n");
-    }
-    if (len % 16 != 0)
-        printf("\r\n");
-
-    printf("-----------------------------\r\n");
-}
-
 /* -------------------- NODE B PROVIDER -------------------- */
 static int nodeB_provider(void *ctx, void *data, size_t len)
 {
     (void)ctx;
-
-    /* ★ 打印原始 payload（SCP 包） */
-    scp_debug_hex("SCP TX RAW", data, len);
-
     memset(send_buf, 0, sizeof(send_buf));
 
     /* START magic */
@@ -159,12 +139,8 @@ static int nodeB_provider(void *ctx, void *data, size_t len)
     p = (uint32_t *)&send_buf[len + 4];
     *p = CLOSE;
 
-    /* ★ 打印最终 UART 帧（包含 START/CLOSE） */
-    scp_debug_hex("UART FRAME", send_buf, len + 8);
-
     HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_SET);
 
-    /* 发送完整 256 字节帧（你原来的逻辑） */
     HAL_UART_Transmit(&huart2, send_buf, sizeof(send_buf), HAL_MAX_DELAY);
 
     return 0;
@@ -260,12 +236,13 @@ void APP(void)
 
     scp_init(4);
     scp_stream_alloc(&scp_trans, scp_fd_AtoB, scp_fd_AtoB);
-    t_timer = TimerInit(128, 10, 0, 10);
+    t_timer = TimerInit(256, 10, 0, 10);
     TimerCreat(timer_excu, 1, run);
     HAL_Delay(100);
-    TaskCreate(process_rcv, 128, NULL, 5, 100, 0, &t_process);
-    TaskCreate(task_shell, 800, NULL, 1, 10, 0, &t_shell);
+    TaskCreate(process_rcv, 256, NULL, 0, 0, 5, &t_process);
+    TaskCreate(task_shell, 1024, NULL, 1, 10, 0, &t_shell);
 }
+
 int main(void)
 {
     HAL_Init();

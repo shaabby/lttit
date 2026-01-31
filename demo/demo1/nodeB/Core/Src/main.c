@@ -55,7 +55,6 @@ void SystemClock_Config(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-
 #include "stm32f1xx_hal.h"
 #include "schedule.h"
 #include "fs.h"
@@ -65,6 +64,8 @@ void SystemClock_Config(void);
 #include "comm.h"
 #include "ccnet.h"
 #include "common.h"
+#include "scp.h"
+#include "timer.h"
 #include <memory.h>
 #include <stdio.h>
 
@@ -73,6 +74,7 @@ extern UART_HandleTypeDef huart1;
 #define NODE_ID_A 1
 #define NODE_ID_B 2
 #define NODE_COUNT 3
+
 semaphore_handle sem;
 uint8_t send_buf[256];
 uint8_t rcv_buf[256];
@@ -80,6 +82,40 @@ uint8_t packet[256];
 
 #define START 0xA55AA55A
 #define CLOSE 0xDEAD5A5A
+
+/* ---------- SCP transport & stream ---------- */
+
+#define SCP_FD_A2B 1
+#define SCP_FD_B2A 1
+
+static int scp_ccnet_send(void *user, const void *buf, size_t len)
+{
+    (void)user;
+    struct ccnet_send_parameter p = {
+            .dst  = NODE_ID_A,
+            .ttl  = CCNET_TTL_DEFAULT,
+            .type = CCNET_TYPE_DATA,
+    };
+    return ccnet_output(&p, (void *)buf, (int)len);
+}
+
+static struct scp_transport_class scp_trans = {
+        .send  = scp_ccnet_send,
+        .recv  = NULL,
+        .close = NULL,
+        .user  = NULL,
+};
+
+/* ---------- timer task for SCP ---------- */
+
+TaskHandle_t t_timer;
+static void timer_excu(void *ctx)
+{
+    (void)ctx;
+    scp_timer_process();
+}
+
+/* ---------- UART framing (START/CLOSE) ---------- */
 
 int buf_init(void)
 {
@@ -93,11 +129,14 @@ static int nodeA_provider(void *ctx, void *data, size_t len)
 {
     (void)ctx;
     memset(send_buf, 0, sizeof(send_buf));
+
     uint32_t *p = (uint32_t *)send_buf;
     *p = START;
+
+    memcpy(send_buf + 4, data, len);
+
     p = (uint32_t *)&send_buf[len + 4];
     *p = CLOSE;
-    memcpy(send_buf + 4, data, len);
 
     HAL_UART_Transmit(&huart1, (void *)send_buf, sizeof(send_buf), HAL_MAX_DELAY);
 
@@ -107,7 +146,6 @@ static int nodeA_provider(void *ctx, void *data, size_t len)
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
     if (huart == &huart1) {
-
         semaphore_release(sem);
         __HAL_UART_CLEAR_OREFLAG(&huart1);
 
@@ -118,18 +156,23 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
     }
 }
 
+/* ---------- shell over SCP (application) ---------- */
 
 int shell_process_mes(void *ctx, void *data, size_t len)
 {
+    (void)ctx;
     shell_on_message(data, len);
     return 0;
 }
 
 TaskHandle_t t_shell;
+
+/* Parse UART frame, feed into ccnet (which feeds SCP) */
 void shell_process_remote(void)
 {
     int start = 0;
     int end = 0;
+
     for (uint16_t i = 0; i < 256; i++) {
         uint32_t tmp = *((uint32_t *)&rcv_buf[i]);
         uint32_t magic = (uint32_t)tmp;
@@ -141,18 +184,24 @@ void shell_process_remote(void)
             break;
         }
     }
+
     if (end > start) {
         int len = end - start;
         void *start_data = &rcv_buf[start];
+
         memset(packet, 0, sizeof(packet));
         memcpy(packet, start_data, len);
-        struct ccnet_hdr *ch = (struct ccnet_hdr *) packet;
+
+        struct ccnet_hdr *ch = (struct ccnet_hdr *)packet;
         uint16_t packet_len = ntohs(ch->len) + sizeof(struct ccnet_hdr);
+
+        /* Feed raw ccnet packet into stack (upper layer is SCP now) */
         ccnet_input(NULL, (void *)packet, packet_len);
     }
 }
 
-void task_shell(void *ctx)
+/* Task: wait for UART frame, push into ccnet/SCP */
+void task_shell_rx(void *ctx)
 {
     (void)ctx;
     while (1) {
@@ -163,17 +212,34 @@ void task_shell(void *ctx)
     }
 }
 
+/* Task: read from SCP stream and feed shell */
+TaskHandle_t t_scp_shell;
+
+static uint8_t buf[256];
+static void task_scp_shell(void *ctx)
+{
+    (void)ctx;
+
+    while (1) {
+        int rn = scp_recv(SCP_FD_B2A, buf, sizeof(buf));
+        if (rn > 0) {
+            shell_on_message(buf, (size_t)rn);
+        }
+        TaskDelay(5);
+    }
+}
+
+/* ---------- legacy shell transport (for local shell) ---------- */
+
 void send(void *ctx, void *data, int len)
 {
-    struct ccnet_send_parameter p;
-    p.dst  = NODE_ID_A;
-    p.ttl  = CCNET_TTL_DEFAULT;
-    p.type = CCNET_TYPE_DATA;
-
-    ccnet_output(&p, data, len);
+    (void)ctx;
+    scp_send(1, data, len);
 }
-#include <string.h>
-#include "fs.h"
+
+struct shell_trans_class st_class;
+
+/* ---------- APP init ---------- */
 
 void fs_init_hello(void)
 {
@@ -196,12 +262,14 @@ void fs_init_hello(void)
     fs_sync();
 }
 
-struct shell_trans_class st_class;
 void APP(void)
 {
+    /* CCNet init as node B */
     ccnet_init(NODE_ID_B, NODE_COUNT);
 
-    ccnet_register_node_link(NODE_ID_B, shell_process_mes);
+    /* Node B upper layer is SCP now */
+    ccnet_register_node_link(NODE_ID_B, scp_input);
+    /* Node A link provider: wrap SCP/CCNet payload into UART frame */
     ccnet_register_node_link(NODE_ID_A, nodeA_provider);
 
     ccnet_graph_set_edge(NODE_ID_A, NODE_ID_B, 1);
@@ -209,6 +277,11 @@ void APP(void)
 
     ccnet_build_routing_table();
 
+    /* SCP init and stream allocation */
+    scp_init(4);
+    scp_stream_alloc(&scp_trans, SCP_FD_B2A, SCP_FD_B2A);
+
+    /* Shell transport (local side) */
     st_class.init = (void *)buf_init;
     st_class.send = (void *)send;
     comm_bind(&st_class, NULL);
@@ -219,7 +292,9 @@ void APP(void)
         printf("FS mount failed!\r\n");
     else
         printf("FS mounted OK!\r\n");
+
     //fs_init_hello();
+
     sem = semaphore_creat(0);
     __HAL_UART_CLEAR_OREFLAG(&huart1);
 
@@ -227,9 +302,16 @@ void APP(void)
     HAL_NVIC_EnableIRQ(USART1_IRQn);
     HAL_UART_Receive_IT(&huart1, rcv_buf, 256);
 
-    TaskCreate(task_shell, 256, NULL, 0, 10, 2000, &t_shell);
-}
+    /* SCP timer task (RT) */
+    t_timer = TimerInit(512, 10, 0, 10);
+    TimerCreat(timer_excu, 5, run);
 
+    /* UART¡úccnet/SCP feeder (BE) */
+    TaskCreate(task_shell_rx, 512, NULL, 0, 0, 12, &t_shell);
+
+    /* SCP¡úshell bridge (BE) */
+    TaskCreate(task_scp_shell, 1024, NULL, 0, 10, 0, &t_scp_shell);
+}
 
 int main(void)
 {
@@ -245,6 +327,7 @@ int main(void)
 
     while (1) {}
 }
+
 /* USER CODE END 0 */
 /**
   * @brief System Clock Configuration
