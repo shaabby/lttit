@@ -34,12 +34,8 @@ static void timer_check(void)
     for (;;) {
         TaskEnter();
 
-        struct rb_node *n = clock_tree.first_node;
-        struct rb_node *next;
-
-        while (n && compare_before_eq(n->value, NowTickCount)) {
-            next = rb_next(n);
-
+        struct rb_node *n;
+        while ((n = clock_tree.first_node) && compare_before_eq(n->value, NowTickCount)) {
             struct timer_obj *t =
             container_of(n, struct timer_obj, node);
 
@@ -49,8 +45,6 @@ static void timer_check(void)
 
             if (t->stop_flag == run)
                 clock_tree_add(t);
-
-            n = next;
         }
 
         TaskExit();

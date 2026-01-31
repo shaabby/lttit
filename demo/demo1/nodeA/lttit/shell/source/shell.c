@@ -221,7 +221,7 @@ int cmd_cat(int argc, char **argv)
 
     uint32_t off = 0;
     int r;
-    char *cat_buf = heap_malloc(FS_BLOCK_SIZE);
+    char *cat_buf = heap_malloc(FS_BLOCK_SIZE>>2);
     while ((r = fs_read(ino, off, cat_buf, sizeof(cat_buf))) > 0) {
         for (int i = 0; i < r; i++) {
             if (cat_buf[i] == '\n') {

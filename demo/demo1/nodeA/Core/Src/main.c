@@ -206,7 +206,7 @@ TaskHandle_t t_timer;
 
 int scp_ccnet_send(void *user, const void *buf, size_t len)
 {
-    struct ccnet_send_parameter csp = { 
+    struct ccnet_send_parameter csp = {
             .dst = 2,
             .ttl = CCNET_TTL_DEFAULT,
             .type = 1,
@@ -214,6 +214,14 @@ int scp_ccnet_send(void *user, const void *buf, size_t len)
     return ccnet_output(&csp, (void *)buf, (int)len);
 }
 
+uint32_t timer_count = 0;
+void timer_excu()
+{
+    if (timer_count++ % 5) {
+        scp_timer_process();
+    }
+
+}
 
 #define scp_fd_AtoB 1
 #define scp_fd_BtoA 1
@@ -252,11 +260,11 @@ void APP(void)
 
     scp_init(4);
     scp_stream_alloc(&scp_trans, scp_fd_AtoB, scp_fd_AtoB);
-    //t_timer = TimerInit(128, 10, 10, 0);
-    //TimerCreat(timer_excu, 10, run);
+    t_timer = TimerInit(128, 10, 0, 10);
+    TimerCreat(timer_excu, 1, run);
     HAL_Delay(100);
-    TaskCreate(process_rcv, 128, NULL, 5, 0, 10, &t_process);
-    TaskCreate(task_shell, 800, NULL, 5, 0, 10, &t_shell);
+    TaskCreate(process_rcv, 128, NULL, 5, 100, 0, &t_process);
+    TaskCreate(task_shell, 800, NULL, 1, 10, 0, &t_shell);
 }
 int main(void)
 {

@@ -183,15 +183,11 @@ struct SysTicks {
 }
 
 
-uint32_t timer_count = 0;
 void SysTick_Handler(void)
 {
     uint32_t xre = EnterCritical();
 
     CheckTicks();
-    if (timer_count++ % 50) {
-        scp_timer_process();
-    }
 
     ExitCritical(xre);
 }
