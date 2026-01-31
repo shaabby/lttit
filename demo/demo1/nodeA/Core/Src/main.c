@@ -118,7 +118,7 @@ void process(void)
         memset(appbuf, 0, sizeof(appbuf));
         int rn = scp_recv(1, appbuf, sizeof(appbuf));
         if (rn > 0) {
-            printf("NodeA recv from SCP: %s\r\n", appbuf);
+            printf("%s\r\n", appbuf);
         }
     }
 }
@@ -128,19 +128,13 @@ static int nodeB_provider(void *ctx, void *data, size_t len)
     (void)ctx;
     memset(send_buf, 0, sizeof(send_buf));
 
-    /* START magic */
     uint32_t *p = (uint32_t *)send_buf;
     *p = START;
-
-    /* payload */
     memcpy(send_buf + 4, data, len);
-
-    /* CLOSE magic */
     p = (uint32_t *)&send_buf[len + 4];
     *p = CLOSE;
 
     HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_SET);
-
     HAL_UART_Transmit(&huart2, send_buf, sizeof(send_buf), HAL_MAX_DELAY);
 
     return 0;
@@ -178,7 +172,6 @@ void task_shell(void *ctx)
 
 TaskHandle_t t_process;
 TaskHandle_t t_shell;
-TaskHandle_t t_timer;
 
 int scp_ccnet_send(void *user, const void *buf, size_t len)
 {
@@ -190,13 +183,9 @@ int scp_ccnet_send(void *user, const void *buf, size_t len)
     return ccnet_output(&csp, (void *)buf, (int)len);
 }
 
-uint32_t timer_count = 0;
 void timer_excu()
 {
-    if (timer_count++ % 5) {
-        scp_timer_process();
-    }
-
+    scp_timer_process();
 }
 
 #define scp_fd_AtoB 1
@@ -236,8 +225,7 @@ void APP(void)
 
     scp_init(4);
     scp_stream_alloc(&scp_trans, scp_fd_AtoB, scp_fd_AtoB);
-    t_timer = timer_init(256, 10, 0, 10);
-    timer_create(timer_excu, 1, run);
+    timer_create(timer_excu, 10, run);
     HAL_Delay(100);
     task_create(process_rcv, 256, NULL, 0, 10, 0, &t_process);
     task_create(task_shell, 1024, NULL, 1, 10, 0, &t_shell);

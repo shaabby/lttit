@@ -112,7 +112,7 @@ TaskHandle_t t_timer;
 static void timer_excu(void *ctx)
 {
     (void)ctx;
-    //scp_timer_process();
+    scp_timer_process();
 }
 
 /* ---------- UART framing (START/CLOSE) ---------- */
@@ -208,7 +208,6 @@ void task_shell_rx(void *ctx)
         if (semaphore_take(sem, 10) == true) {
             shell_process_remote();
         }
-        TaskDelay(10);
     }
 }
 
@@ -225,11 +224,8 @@ static void task_scp_shell(void *ctx)
         if (rn > 0) {
             shell_on_message(buf, (size_t)rn);
         }
-        TaskDelay(5);
     }
 }
-
-/* ---------- legacy shell transport (for local shell) ---------- */
 
 void send(void *ctx, void *data, int len)
 {
@@ -239,25 +235,18 @@ void send(void *ctx, void *data, int len)
 
 struct shell_trans_class st_class;
 
-/* ---------- APP init ---------- */
 
 void fs_init_hello(void)
 {
     struct inode *ino = NULL;
     const char *msg = "hello world\n";
-
-    /* 在根目录下创建 /hello.c，如果已经存在就直接打开 */
     if (fs_open("/hello.c", O_CREAT, &ino) < 0) {
-        // 这里你可以加 comm_write 打印错误
         return;
     }
-
-    /* 从偏移 0 写入 hello world\n */
     if (fs_write(ino, 0, msg, (uint32_t)strlen(msg)) < 0) {
         fs_close(ino);
         return;
     }
-
     fs_close(ino);
     fs_sync();
 }
@@ -295,22 +284,20 @@ void APP(void)
 
     //fs_init_hello();
 
-    sem = semaphore_creat(0);
+    sem = semaphore_create(0);
     __HAL_UART_CLEAR_OREFLAG(&huart1);
 
     __HAL_UART_ENABLE_IT(&huart1, UART_IT_RXNE);
     HAL_NVIC_EnableIRQ(USART1_IRQn);
     HAL_UART_Receive_IT(&huart1, rcv_buf, 256);
 
-    /* SCP timer task (RT) */
-    //t_timer = TimerInit(512, 10, 0, 10);
-    //TimerCreat(timer_excu, 5, run);
+    timer_create(timer_excu, 10, run);
 
     /* UART→ccnet/SCP feeder (BE) */
-    TaskCreate(task_shell_rx, 512, NULL, 0, 0, 12, &t_shell);
+    task_create(task_shell_rx, 300, NULL, 0, 10, 0, &t_shell);
 
     /* SCP→shell bridge (BE) */
-    TaskCreate(task_scp_shell, 1024, NULL, 0, 10, 0, &t_scp_shell);
+    task_create(task_scp_shell, 800, NULL, 0, 10, 0, &t_scp_shell);
 }
 
 int main(void)
@@ -321,9 +308,9 @@ int main(void)
     MX_GPIO_Init();
     MX_USART1_UART_Init();
 
-    SchedulerInit();
+    scheduler_init();
     APP();
-    SchedulerStart();
+    scheduler_start();
 
     while (1) {}
 }

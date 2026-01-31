@@ -43,8 +43,8 @@ oo_buffer_handle Oo_buffer_creat(uint8_t buffer_size)
             .in = 0,
             .out = 0,
             .size = buffer_size,
-            .item = semaphore_creat(0),
-            .space = semaphore_creat(buffer_size),
+            .item = semaphore_create(0),
+            .space = semaphore_create(buffer_size),
     };
 
     return b;
@@ -95,9 +95,9 @@ mo_buffer_handle Mo_buffer_creat(uint8_t buffer_size)
             .in = 0,
             .out = 0,
             .size = buffer_size,
-            .item = semaphore_creat(0),
-            .space = semaphore_creat(buffer_size),
-            .guard = semaphore_creat(1),
+            .item = semaphore_create(0),
+            .space = semaphore_create(buffer_size),
+            .guard = semaphore_create(1),
     };
 
     return b;
@@ -153,9 +153,9 @@ mm_buffer_handle Mm_buffer_creat(uint8_t buffer_size)
             .in = 0,
             .out = 0,
             .size = buffer_size,
-            .item = semaphore_creat(0),
-            .space = semaphore_creat(buffer_size),
-            .guard = semaphore_creat(1),
+            .item = semaphore_create(0),
+            .space = semaphore_create(buffer_size),
+            .guard = semaphore_create(1),
     };
 
     return b;

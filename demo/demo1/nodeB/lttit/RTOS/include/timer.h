@@ -2,7 +2,6 @@
 #define _TIMER_H_
 
 #include <stdint.h>
-#include "schedule.h"
 #include "rbtree.h"
 
 #define run  1
@@ -12,9 +11,14 @@ typedef void (*TimerFunction_t)(void *);
 struct timer_obj;
 typedef struct timer_obj *TimerHandle;
 
-TaskHandle_t TimerInit(uint16_t stack, uint16_t period,
-                       uint8_t respond_line, uint32_t deadline);
+void timer_init(void);
 
-TimerHandle TimerCreat(TimerFunction_t cb, uint32_t period, uint8_t flag);
+TimerHandle timer_create(TimerFunction_t cb,
+                         uint32_t period,
+                         uint8_t flag);
+
+void timer_delete(TimerHandle t);
+
+void timer_tick(void);
 
 #endif

@@ -2,7 +2,7 @@
 #include "heap.h"
 #include "port.h"
 #include "schedule.h"
-#include "compare.h"
+#include "rbtree.h"
 
 struct mutex {
     uint8_t value;
@@ -12,7 +12,7 @@ struct mutex {
 
 extern uint8_t schedule_PendSV;
 
-mutex_handle mutex_creat(void)
+mutex_handle mutex_create(void)
 {
     struct mutex *m;
 
@@ -22,7 +22,7 @@ mutex_handle mutex_creat(void)
 
     *m = (struct mutex){
             .value = 1,
-            .owner = NULL
+            .owner = NULL,
     };
 
     rb_root_init(&m->wait_tree);
@@ -39,12 +39,10 @@ uint8_t mutex_lock(mutex_handle m, uint32_t ticks)
 {
     uint32_t key;
     TaskHandle_t cur;
-    uint32_t prio;
     uint8_t volatile pend;
 
     key = EnterCritical();
-    cur = GetCurrentTCB();
-    prio = GetPrio(cur);
+    cur = get_current_tcb();
 
     if (m->value > 0) {
         m->owner = cur;
@@ -61,11 +59,8 @@ uint8_t mutex_lock(mutex_handle m, uint32_t ticks)
     pend = schedule_PendSV;
 
     if (ticks > 0) {
-        Insert_IPC(cur, &m->wait_tree);
-        TaskDelay(ticks);
-
-        if (compare_after(GetPrio(m->owner), prio))
-            reset_ready_prio(m->owner, prio);
+        insert_ipc(cur, &m->wait_tree);
+        task_delay(ticks);
     }
 
     ExitCritical(key);
@@ -75,8 +70,8 @@ uint8_t mutex_lock(mutex_handle m, uint32_t ticks)
 
     key = EnterCritical();
 
-    if (!CheckIPCState(cur)) {
-        Remove_IPC(cur);
+    if (!check_ipc_state(cur)) {
+        remove_ipc(cur);
         ExitCritical(key);
         return 0;
     }
@@ -92,20 +87,18 @@ uint8_t mutex_unlock(mutex_handle m)
 {
     uint32_t key;
     TaskHandle_t cur;
-    uint32_t cur_prio;
 
     key = EnterCritical();
-    cur = GetCurrentTCB();
-    cur_prio = GetPrio(cur);
+    cur = get_current_tcb();
 
     if (m->wait_tree.count) {
-        TaskHandle_t t = FirstRespond_IPC(&m->wait_tree);
+        TaskHandle_t t = first_respond_ipc(&m->wait_tree);
 
-        DelayTreeRemove(t);
-        Remove_IPC(t);
-        TaskTreeAdd(t, Ready);
+        delay_tree_remove(t);
+        remove_ipc(t);
+        task_tree_add(t, Ready);
 
-        if (is_leisure() || compare_before(GetPrio(t), cur_prio))
+        if (sched_should_preempt(t, cur))
             schedule();
     }
 

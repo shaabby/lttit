@@ -8,6 +8,7 @@
 #include "compare.h"
 #include "link_list.h"
 #include "math.h"
+#include "timer.h"
 #include <stdio.h>
 
 #define SCHED_DEBUG 0
@@ -17,7 +18,7 @@
 #define sched_log(fmt, ...) do {} while (0)
 #endif
 
-#define BE_DEFAULT_TIMESLICE 5
+#define BE_DEFAULT_TIMESLICE 1
 
 extern uint32_t *StackInit(uint32_t *pxTopOfStack, TaskFunction_t pxCode,
                            void *pvParameters);
@@ -521,6 +522,7 @@ void check_ticks(void)
     struct rb_node *n;
 
     NowTickCount++;
+    timer_tick();
 
     if (!SusPend)
         return;
