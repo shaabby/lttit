@@ -1,6 +1,5 @@
 #include "sem.h"
 #include "heap.h"
-#include "port.h"
 #include "schedule.h"
 #include "rbtree.h"
 
@@ -9,19 +8,14 @@ struct semaphore {
     struct rb_root wait_tree;
 };
 
-extern uint8_t schedule_PendSV;
-
 semaphore_handle semaphore_create(uint8_t value)
 {
-    struct semaphore *sem;
-
-    sem = heap_malloc(sizeof(*sem));
+    struct semaphore *sem = heap_malloc(sizeof(*sem));
     if (!sem)
         return NULL;
 
     sem->value = value;
     rb_root_init(&sem->wait_tree);
-
     return sem;
 }
 
@@ -32,75 +26,73 @@ void semaphore_delete(semaphore_handle sem)
 
 uint8_t semaphore_release(semaphore_handle sem)
 {
-    uint32_t key;
-    TaskHandle_t cur;
+    TaskHandle_t cur = get_current_tcb();
+    TaskHandle_t wake = NULL;
 
-    key = EnterCritical();
-    cur = get_current_tcb();
+    scheduler_lock();
 
     if (sem->wait_tree.count) {
-        TaskHandle_t t = first_respond_ipc(&sem->wait_tree);
-
-        delay_tree_remove(t);
-        remove_ipc(t);
-        task_tree_add(t, Ready);
-
-        if (sched_should_preempt(t, cur))
-            schedule();
+        wake = first_respond_ipc(&sem->wait_tree);
+        delay_tree_remove(wake);
+        remove_ipc(wake);
     }
 
     sem->value++;
 
-    ExitCritical(key);
-    return 1;
+    if (wake && sched_should_preempt(wake, cur))
+        scheduler_request_switch();
+
+    scheduler_unlock();
+
+    if (wake)
+        task_tree_add(wake, Ready);
+
+    return true;
 }
 
 uint8_t semaphore_take(semaphore_handle sem, uint32_t ticks)
 {
-    uint32_t key;
-    TaskHandle_t cur;
-    uint8_t volatile pend;
+    TaskHandle_t cur = get_current_tcb();
+    uint8_t pend = schedule_PendSV;
 
-    key = EnterCritical();
-    cur = get_current_tcb();
-    pend = schedule_PendSV;
+    scheduler_lock();
 
     if (sem->value > 0) {
         sem->value--;
-        ExitCritical(key);
-        return 1;
+        scheduler_unlock();
+        return true;
     }
 
     if (ticks == 0) {
-        ExitCritical(key);
-        return 0;
+        scheduler_unlock();
+        return false;
     }
 
     insert_ipc(cur, &sem->wait_tree);
 
+    scheduler_unlock();
+
     if (ticks > 0)
         task_delay(ticks);
-
-    ExitCritical(key);
 
     while (pend == schedule_PendSV)
         ;
 
-    key = EnterCritical();
+    scheduler_lock();
 
     if (!check_ipc_state(cur)) {
         remove_ipc(cur);
-        ExitCritical(key);
-        return 0;
+        scheduler_unlock();
+        return false;
     }
 
     if (sem->value > 0)
         sem->value--;
     else {
-        ExitCritical(key);
-        return 0;
+        scheduler_unlock();
+        return false;
     }
 
-    ExitCritical(key);
-    return 1;
+    scheduler_unlock();
+    return true;
 }

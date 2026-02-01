@@ -1,8 +1,8 @@
 #include "PCqueue.h"
-#include "sem.h"
 #include "heap.h"
+#include "schedule.h"
 
-struct oo_buffer {
+struct pc_queue {
     uint8_t in;
     uint8_t out;
     uint8_t size;
@@ -11,194 +11,79 @@ struct oo_buffer {
     int buf[];
 };
 
-struct mo_buffer {
-    uint8_t in;
-    uint8_t out;
-    uint8_t size;
-    semaphore_handle item;
-    semaphore_handle space;
-    semaphore_handle guard;
-    int buf[];
-};
-
-struct mm_buffer {
-    uint8_t in;
-    uint8_t out;
-    uint8_t size;
-    semaphore_handle item;
-    semaphore_handle space;
-    semaphore_handle guard;
-    int buf[];
-};
-
-oo_buffer_handle Oo_buffer_creat(uint8_t buffer_size)
+pc_queue_handle pc_queue_create(uint8_t buffer_size)
 {
-    struct oo_buffer *b;
+    struct pc_queue *q;
 
-    b = heap_malloc(sizeof(*b) + sizeof(int) * buffer_size);
-    if (!b)
+    q = heap_malloc(sizeof(*q) + sizeof(int) * buffer_size);
+    if (!q)
         return NULL;
 
-    *b = (struct oo_buffer){
-            .in = 0,
-            .out = 0,
-            .size = buffer_size,
-            .item = semaphore_create(0),
-            .space = semaphore_create(buffer_size),
-    };
+    q->in   = 0;
+    q->out  = 0;
+    q->size = buffer_size;
 
-    return b;
-}
+    q->item  = semaphore_create(0);
+    q->space = semaphore_create(buffer_size);
 
-void Oo_insert(oo_buffer_handle b, int object)
-{
-    while (!semaphore_take(b->space, MAX_WAIT_TICKS))
-        ;
-
-    b->buf[b->in] = object;
-    b->in = (b->in + 1) % b->size;
-
-    semaphore_release(b->item);
-}
-
-int Oo_remove(oo_buffer_handle b)
-{
-    int item;
-
-    while (!semaphore_take(b->item, MAX_WAIT_TICKS))
-        ;
-
-    item = b->buf[b->out];
-    b->out = (b->out + 1) % b->size;
-
-    semaphore_release(b->space);
-
-    return item;
-}
-
-void Oo_buffer_delete(oo_buffer_handle b)
-{
-    semaphore_delete(b->item);
-    semaphore_delete(b->space);
-    heap_free(b);
-}
-
-mo_buffer_handle Mo_buffer_creat(uint8_t buffer_size)
-{
-    struct mo_buffer *b;
-
-    b = heap_malloc(sizeof(*b) + sizeof(int) * buffer_size);
-    if (!b)
+    if (!q->item || !q->space) {
+        if (q->item)
+            semaphore_delete(q->item);
+        if (q->space)
+            semaphore_delete(q->space);
+        heap_free(q);
         return NULL;
+    }
 
-    *b = (struct mo_buffer){
-            .in = 0,
-            .out = 0,
-            .size = buffer_size,
-            .item = semaphore_create(0),
-            .space = semaphore_create(buffer_size),
-            .guard = semaphore_create(1),
-    };
-
-    return b;
+    return q;
 }
 
-void Mo_insert(mo_buffer_handle b, int object)
+void pc_queue_delete(pc_queue_handle q)
 {
-    while (!semaphore_take(b->space, MAX_WAIT_TICKS))
-        ;
+    if (!q)
+        return;
 
-    while (!semaphore_take(b->guard, MAX_WAIT_TICKS))
-        ;
-
-    b->buf[b->in] = object;
-    b->in = (b->in + 1) % b->size;
-
-    semaphore_release(b->guard);
-    semaphore_release(b->item);
+    semaphore_delete(q->item);
+    semaphore_delete(q->space);
+    heap_free(q);
 }
 
-int Mo_remove(mo_buffer_handle b)
+uint8_t pc_queue_send(pc_queue_handle q, int value, uint32_t ticks)
 {
-    int item;
+    if (!q)
+        return false;
 
-    while (!semaphore_take(b->item, MAX_WAIT_TICKS))
-        ;
+    if (!semaphore_take(q->space, ticks))
+        return false;
 
-    item = b->buf[b->out];
-    b->out = (b->out + 1) % b->size;
+    scheduler_lock();
 
-    semaphore_release(b->space);
+    q->buf[q->in] = value;
+    q->in = (uint8_t)((q->in + 1) % q->size);
 
-    return item;
+    scheduler_unlock();
+
+    semaphore_release(q->item);
+
+    return true;
 }
 
-void Mo_buffer_delete(mo_buffer_handle b)
+uint8_t pc_queue_recv(pc_queue_handle q, int *out, uint32_t ticks)
 {
-    semaphore_delete(b->item);
-    semaphore_delete(b->space);
-    semaphore_delete(b->guard);
-    heap_free(b);
-}
+    if (!q || !out)
+        return false;
 
-mm_buffer_handle Mm_buffer_creat(uint8_t buffer_size)
-{
-    struct mm_buffer *b;
+    if (!semaphore_take(q->item, ticks))
+        return false;
 
-    b = heap_malloc(sizeof(*b) + sizeof(int) * buffer_size);
-    if (!b)
-        return NULL;
+    scheduler_lock();
 
-    *b = (struct mm_buffer){
-            .in = 0,
-            .out = 0,
-            .size = buffer_size,
-            .item = semaphore_create(0),
-            .space = semaphore_create(buffer_size),
-            .guard = semaphore_create(1),
-    };
+    *out = q->buf[q->out];
+    q->out = (uint8_t)((q->out + 1) % q->size);
 
-    return b;
-}
+    scheduler_unlock();
 
-void Mm_insert(mm_buffer_handle b, int object)
-{
-    while (!semaphore_take(b->space, MAX_WAIT_TICKS))
-        ;
+    semaphore_release(q->space);
 
-    while (!semaphore_take(b->guard, MAX_WAIT_TICKS))
-        ;
-
-    b->buf[b->in] = object;
-    b->in = (b->in + 1) % b->size;
-
-    semaphore_release(b->guard);
-    semaphore_release(b->item);
-}
-
-int Mm_remove(mm_buffer_handle b)
-{
-    int item;
-
-    while (!semaphore_take(b->item, MAX_WAIT_TICKS))
-        ;
-
-    while (!semaphore_take(b->guard, MAX_WAIT_TICKS))
-        ;
-
-    item = b->buf[b->out];
-    b->out = (b->out + 1) % b->size;
-
-    semaphore_release(b->guard);
-    semaphore_release(b->space);
-
-    return item;
-}
-
-void Mm_buffer_delete(mm_buffer_handle b)
-{
-    semaphore_delete(b->item);
-    semaphore_delete(b->space);
-    semaphore_delete(b->guard);
-    heap_free(b);
+    return true;
 }
