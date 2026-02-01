@@ -156,15 +156,6 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
     }
 }
 
-/* ---------- shell over SCP (application) ---------- */
-
-int shell_process_mes(void *ctx, void *data, size_t len)
-{
-    (void)ctx;
-    shell_on_message(data, len);
-    return 0;
-}
-
 TaskHandle_t t_shell;
 
 /* Parse UART frame, feed into ccnet (which feeds SCP) */
@@ -288,7 +279,7 @@ void APP(void)
     HAL_NVIC_EnableIRQ(USART1_IRQn);
     HAL_UART_Receive_IT(&huart1, rcv_buf, 256);
 
-    timer_create(timer_excu, 1, run);
+    timer_create(timer_excu, 10, run);
 
     /* UART¡úccnet/SCP feeder (BE) */
     task_create(task_shell_rx, 512, NULL, 0, 12, 0, &t_shell);
