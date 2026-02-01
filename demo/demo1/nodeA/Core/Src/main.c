@@ -227,8 +227,8 @@ void APP(void)
     scp_stream_alloc(&scp_trans, scp_fd_AtoB, scp_fd_AtoB);
     timer_create(timer_excu, 10, run);
     HAL_Delay(100);
-    task_create(process_rcv, 256, NULL, 0, 10, 0, &t_process);
-    task_create(task_shell, 1024, NULL, 1, 10, 0, &t_shell);
+    task_create(process_rcv, 256, NULL, 0, 12, 0, &t_process);
+    task_create(task_shell, 1024, NULL, 3, 10, 0, &t_shell);
 }
 
 int main(void)

@@ -18,6 +18,11 @@
 
 typedef void (*TaskFunction_t)(void *);
 typedef struct TCB_t *TaskHandle_t;
+extern volatile uint8_t schedule_PendSV;
+TaskHandle_t get_current_tcb(void);
+
+void rtos_task_set_waiting_obj(TaskHandle_t t, void *obj);
+void *rtos_task_get_waiting_obj(TaskHandle_t t);
 
 uint32_t task_create(TaskFunction_t task_code,
                      uint16_t stack_depth,
@@ -32,7 +37,9 @@ void task_delay(uint16_t ticks);
 uint32_t task_enter(void);
 uint32_t task_exit(void);
 
-uint8_t is_leisure(void);
+uint8_t task_is_rt(TaskHandle_t t);
+uint32_t task_get_sched_prio(TaskHandle_t t);
+void task_set_sched_prio(TaskHandle_t t, uint32_t prio);
 
 void task_tree_add(TaskHandle_t self, uint8_t state);
 void task_tree_remove(TaskHandle_t self, uint8_t state);
@@ -54,6 +61,10 @@ void tree_delay_init(void);
 void record_wake_time(uint16_t ticks);
 void check_ticks(void);
 
+void scheduler_lock(void);
+void scheduler_unlock(void);
+void scheduler_request_switch(void);
+
 int sched_should_preempt(TaskHandle_t new_task, TaskHandle_t cur_task);
 
 struct task_info {
@@ -65,5 +76,6 @@ struct task_info {
 };
 
 int rtos_get_task_info(uint32_t pid, struct task_info *out);
+void rtos_task_change_prio(TaskHandle_t t, uint32_t new_prio);
 
 #endif

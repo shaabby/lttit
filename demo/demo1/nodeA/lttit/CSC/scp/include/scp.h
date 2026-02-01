@@ -7,7 +7,7 @@
 
 
 #define MIN_SEG 32
-#define SCP_RTO_MIN 20
+#define SCP_RTO_MIN 100
 #define SCP_RECV_LIMIT 0xFFFF
 #define SEND_WIN_INIT 0xFFFF
 #define RECV_WIN_INIT     0xFFFF

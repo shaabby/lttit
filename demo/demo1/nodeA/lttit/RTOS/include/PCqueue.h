@@ -3,30 +3,14 @@
 
 #include <stdint.h>
 #include "sem.h"
+#include "mutex.h"
 
-#define MAX_WAIT_TICKS 0xFFFF
+struct pc_queue;
+typedef struct pc_queue *pc_queue_handle;
+pc_queue_handle pc_queue_create(uint8_t buffer_size);
 
-struct oo_buffer;
-struct mo_buffer;
-struct mm_buffer;
-
-typedef struct oo_buffer *oo_buffer_handle;
-typedef struct mo_buffer *mo_buffer_handle;
-typedef struct mm_buffer *mm_buffer_handle;
-
-oo_buffer_handle Oo_buffer_creat(uint8_t buffer_size);
-void Oo_insert(oo_buffer_handle b, int object);
-int Oo_remove(oo_buffer_handle b);
-void Oo_buffer_delete(oo_buffer_handle b);
-
-mo_buffer_handle Mo_buffer_creat(uint8_t buffer_size);
-void Mo_insert(mo_buffer_handle b, int object);
-int Mo_remove(mo_buffer_handle b);
-void Mo_buffer_delete(mo_buffer_handle b);
-
-mm_buffer_handle Mm_buffer_creat(uint8_t buffer_size);
-void Mm_insert(mm_buffer_handle b, int object);
-int Mm_remove(mm_buffer_handle b);
-void Mm_buffer_delete(mm_buffer_handle b);
+void pc_queue_delete(pc_queue_handle q);
+uint8_t pc_queue_send(pc_queue_handle q, int value, uint32_t ticks);
+uint8_t pc_queue_recv(pc_queue_handle q, int *out, uint32_t ticks);
 
 #endif
