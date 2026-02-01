@@ -1,12 +1,24 @@
 #ifndef SHELL_H
 #define SHELL_H
 
-#define SHELL_MAX_LINE 32
-#define SHELL_MAX_ARGS 8
+#include <stddef.h>
+
+#define SHELL_MAX_LINE        128
+#define SHELL_MAX_ARGS        16
+#define SHELL_MAX_PATH        128
+#define SHELL_LS_MAX_ENTRIES  32
+#define SHELL_CAT_BUF_SIZE    256
+#define SHELL_REMOTE_MAX_CMD  128
+
+#define SHELL_PROMPT          "> "
+#define SHELL_BACKSPACE_SEQ       "\b \b"
+#define SHELL_BACKSPACE_SEQ_LEN   3
 
 void shell_main(void);
-int shell_readline(char *buf, int max);
-int shell_parse(char *line, char **argv, int max);
+void shell_on_message(const char *msg, int len);
+
+int  shell_readline(char *buf, int max);
+int  shell_parse(char *line, char **argv, int max);
 void shell_exec(int argc, char **argv);
 
 #endif

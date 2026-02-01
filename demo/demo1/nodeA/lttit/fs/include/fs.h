@@ -143,6 +143,7 @@ int fs_close(struct inode *inode);
 int fs_truncate(struct inode *inode, uint32_t newsize);
 int fs_sync(void);
 
+uint32_t fs_get_size(struct inode *inode);
 
 
 

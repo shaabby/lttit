@@ -2,34 +2,40 @@
 #define COMM_H
 
 #include <stdint.h>
-typedef struct {
-    void (*putc)(char c);                 /* ????????? */
-    char (*getc)(void);                   /* ???????????? */
-    void (*write)(const char *buf, int len); /* ?????¦Ë????? */
+#include <stddef.h>
 
-    int  (*peek)(void);                   /* ?????????????????-1 ????????? */
+typedef struct {
+    void (*putc)(void *ctx, char c);
+    char (*getc)(void *ctx);
+    void (*write)(void *ctx, const char *buf, int len);
+    int  (*peek)(void *ctx);
+    void *ctx;
 } comm_t;
 
-/* ????????????????????? */
-extern const comm_t *comm;
+extern comm_t *comm;
 
-/* ?????????? UART ????????? USART1?? */
 void comm_init_uart(void *huart_handle);
 
-/* ???????????????? */
 static inline void comm_putc(char c)
 {
-    comm->putc(c);
+    comm->putc(comm->ctx, c);
 }
 
 static inline char comm_getc(void)
 {
-    return comm->getc();
+    return comm->getc(comm->ctx);
 }
 
 static inline void comm_write(const char *buf, int len)
 {
-    comm->write(buf, len);
+    comm->write(comm->ctx, buf, len);
 }
 
-#endif /* COMM_H */
+static inline int comm_peek(void)
+{
+    if (comm->peek)
+        return comm->peek(comm->ctx);
+    return -1;
+}
+
+#endif
