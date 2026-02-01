@@ -205,9 +205,11 @@ void task_shell_rx(void *ctx)
 {
     (void)ctx;
     while (1) {
+        task_enter();
         if (semaphore_take(sem, 10) == true) {
             shell_process_remote();
         }
+        task_exit();
     }
 }
 
@@ -220,10 +222,12 @@ static void task_scp_shell(void *ctx)
     (void)ctx;
 
     while (1) {
+        task_enter();
         int rn = scp_recv(SCP_FD_B2A, buf, sizeof(buf));
         if (rn > 0) {
             shell_on_message(buf, (size_t)rn);
         }
+        task_exit();
     }
 }
 
@@ -287,10 +291,10 @@ void APP(void)
     timer_create(timer_excu, 1, run);
 
     /* UART¡úccnet/SCP feeder (BE) */
-    task_create(task_shell_rx, 300, NULL, 0, 10, 0, &t_shell);
+    task_create(task_shell_rx, 512, NULL, 0, 12, 0, &t_shell);
 
     /* SCP¡úshell bridge (BE) */
-    task_create(task_scp_shell, 800, NULL, 0, 10, 0, &t_scp_shell);
+    task_create(task_scp_shell, 1024, NULL, 0, 10, 0, &t_scp_shell);
 }
 
 int main(void)

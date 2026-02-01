@@ -10,7 +10,7 @@
 #define SCP_RTO_MIN 50
 #define SCP_RECV_LIMIT 0xFFFF
 #define SEND_WIN_INIT 0xFFFF
-#define RECV_WIN_INIT     0xFFFF 
+#define RECV_WIN_INIT     0xFFFF
 #define MTU 256
 
 
@@ -46,9 +46,9 @@ struct scp_hdr {
 #define SCP_FLAG_PING  0x10
 #define SCP_FLAG_RESEND 0x20
 
-#define TIMER_RETRANS 0 
-#define TIMER_KEEPALIVE 1 
-#define TIMER_PERSIST 2 
+#define TIMER_RETRANS 0
+#define TIMER_KEEPALIVE 1
+#define TIMER_PERSIST 2
 #define TIMER_COUNT 3
 
 struct scp_stream {
@@ -74,13 +74,13 @@ struct scp_stream {
     uint32_t rto;
 
     uint32_t rtt_ts;
-    uint32_t rtt_seq; //sequence number being timed 
+    uint32_t rtt_seq; //sequence number being timed
 
     uint8_t  timeout_count;
 
     struct list_node snd_q;
 
-    struct list_node rcv_buf_q; //none orider 
+    struct list_node rcv_buf_q; //none orider
     struct list_node rcv_data_q; // orider
     uint32_t sb_hiwat;
     uint32_t sb_cc;

@@ -254,15 +254,12 @@ uint8_t check_ipc_state(TaskHandle_t taskHandle)
 
 void scheduler_lock(void)
 {
-    preempt_count++;
-    spin_lock(&sched_lock);
+    preempt_disable();
 }
 
 void scheduler_unlock(void)
 {
-    spin_unlock(&sched_lock);
-    preempt_count--;
-
+    preempt_enable();
     if (preempt_count == 0 && need_resched) {
         need_resched = 0;
         schedule();
