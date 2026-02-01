@@ -436,13 +436,23 @@ void scp_output_ack(struct scp_stream *ss)
     heap_free(sh);
 }
 
-static uint8_t scp_packet[MTU];
 void scp_output_data(struct scp_stream *ss, struct scp_buf *sb,
                      uint32_t offset, uint32_t frag_len)
 {
-    struct scp_hdr hdr;
+    uint32_t pkt_len = sizeof(struct scp_hdr) + frag_len;
 
-    memset(scp_packet, 0, sizeof(scp_packet));
+    uint8_t small_buf[64];
+    uint8_t *pkt;
+
+    if (pkt_len <= sizeof(small_buf)) {
+        pkt = small_buf;
+    } else {
+        pkt = heap_malloc(pkt_len);
+        if (!pkt)
+            return;
+    }
+
+    struct scp_hdr hdr;
 
     uint8_t *payload_base = sb->data + sizeof(struct scp_hdr);
     uint8_t *frag_payload = payload_base + offset;
@@ -455,18 +465,19 @@ void scp_output_data(struct scp_stream *ss, struct scp_buf *sb,
     hdr.flags = SCP_FLAG_DATA;
     hdr.fd    = ss->dst_fd;
 
-    memcpy(scp_packet, &hdr, sizeof(struct scp_hdr));
-    memcpy(scp_packet + sizeof(struct scp_hdr), frag_payload, frag_len);
+    memcpy(pkt, &hdr, sizeof(struct scp_hdr));
+    memcpy(pkt + sizeof(struct scp_hdr), frag_payload, frag_len);
 
-    hdr.cksum = in_checksum(scp_packet, sizeof(struct scp_hdr) + frag_len);
-    memcpy(scp_packet, &hdr, sizeof(struct scp_hdr));
+    hdr.cksum = in_checksum(pkt, pkt_len);
+    memcpy(pkt, &hdr, sizeof(struct scp_hdr));
 
-    scp_debug_dump_tx("DATA", scp_packet, sizeof(struct scp_hdr) + frag_len);
-    ss->st_class->send(ss->st_class->user,
-                       scp_packet,
-                       sizeof(struct scp_hdr) + frag_len);
+    scp_debug_dump_tx("DATA", pkt, pkt_len);
+
+    ss->st_class->send(ss->st_class->user, pkt, pkt_len);
+
+    if (pkt != small_buf)
+        heap_free(pkt);
 }
-
 
 static int scp_output(struct scp_stream *ss, int flags)
 {

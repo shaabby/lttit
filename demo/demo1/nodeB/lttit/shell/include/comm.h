@@ -4,31 +4,38 @@
 #include <stdint.h>
 #include <stddef.h>
 
-struct shell_trans_class {
-    void (*init)(void *ctx);
-    void (*send)(void *ctx, void *buf, size_t len);
+typedef struct {
+    void (*putc)(void *ctx, char c);
+    char (*getc)(void *ctx);
+    void (*write)(void *ctx, const char *buf, int len);
+    int  (*peek)(void *ctx);
     void *ctx;
-};
+} comm_t;
 
-extern struct shell_trans_class *g_shell_trans;
+extern comm_t *comm;
 
-void comm_bind(struct shell_trans_class *t, void *ctx);
-
-static inline void comm_write(const char *buf, int len)
-{
-    if (g_shell_trans && g_shell_trans->send && buf && len > 0) {
-        g_shell_trans->send(g_shell_trans->ctx, buf, len);
-    }
-}
+void comm_init_uart(void *huart_handle);
 
 static inline void comm_putc(char c)
 {
-    comm_write(&c, 1);
+    comm->putc(comm->ctx, c);
 }
 
-static inline char comm_getc()
+static inline char comm_getc(void)
 {
-    return 0;
+    return comm->getc(comm->ctx);
+}
+
+static inline void comm_write(const char *buf, int len)
+{
+    comm->write(comm->ctx, buf, len);
+}
+
+static inline int comm_peek(void)
+{
+    if (comm->peek)
+        return comm->peek(comm->ctx);
+    return -1;
 }
 
 #endif

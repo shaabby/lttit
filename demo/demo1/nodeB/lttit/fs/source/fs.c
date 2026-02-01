@@ -593,6 +593,13 @@ int fs_write(struct inode *inode, uint32_t off, const void *buf, uint32_t len)
     return (int)total;
 }
 
+uint32_t fs_get_size(struct inode *inode)
+{
+    if (!inode)
+        return 0;
+    return inode->din.size;
+}
+
 int fs_truncate(struct inode *inode, uint32_t newsize)
 {
     (void)inode;

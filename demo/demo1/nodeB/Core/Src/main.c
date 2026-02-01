@@ -233,9 +233,6 @@ void send(void *ctx, void *data, int len)
     scp_send(1, data, len);
 }
 
-struct shell_trans_class st_class;
-
-
 void fs_init_hello(void)
 {
     struct inode *ino = NULL;
@@ -253,6 +250,7 @@ void fs_init_hello(void)
 
 void APP(void)
 {
+    buf_init();
     /* CCNet init as node B */
     ccnet_init(NODE_ID_B, NODE_COUNT);
 
@@ -270,11 +268,6 @@ void APP(void)
     scp_init(4);
     scp_stream_alloc(&scp_trans, SCP_FD_B2A, SCP_FD_B2A);
 
-    /* Shell transport (local side) */
-    st_class.init = (void *)buf_init;
-    st_class.send = (void *)send;
-    comm_bind(&st_class, NULL);
-
     struct superblock sb;
     fs_port_init();
     if (fs_port_mount(&sb) != 0)
@@ -291,7 +284,7 @@ void APP(void)
     HAL_NVIC_EnableIRQ(USART1_IRQn);
     HAL_UART_Receive_IT(&huart1, rcv_buf, 256);
 
-    timer_create(timer_excu, 10, run);
+    timer_create(timer_excu, 1, run);
 
     /* UART¡úccnet/SCP feeder (BE) */
     task_create(task_shell_rx, 300, NULL, 0, 10, 0, &t_shell);
