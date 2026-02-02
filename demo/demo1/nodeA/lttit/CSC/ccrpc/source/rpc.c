@@ -21,7 +21,8 @@ struct rpc_method_entry {
     rpc_param_parser_t   parse_param;
     rpc_handler_t        handler;
     rpc_result_encoder_t encode_result;
-    rpc_free_param_t free_param;
+    rpc_free_param_t     free_param;
+    rpc_free_param_t     free_result;
 };
 
 struct rpc_transport_entry {
@@ -42,14 +43,18 @@ static struct hashmap g_transport_map;
 static uint8_t param_buf[RPC_MAX_PARAM_SIZE];
 static uint8_t result_buf[RPC_MAX_RESULT_SIZE];
 
-static char    method[128];
+#define METHOD_LEN 128
+static char    method[METHOD_LEN];
 static uint8_t resp_tlv[RPC_MAX_RESULT_TLV_SIZE];
 
 // max segment
 static uint8_t poll_buf[MTU];
 
+#define RPC_DEBUG 1
+
 static void ccnet_debug_hex(const char *tag, const void *buf, size_t len)
 {
+#ifndef RPC_DEBUG
     const uint8_t *p = buf;
 
     printf("---- %s (%zu bytes) ----\n", tag, len);
@@ -63,6 +68,7 @@ static void ccnet_debug_hex(const char *tag, const void *buf, size_t len)
         printf("\n");
 
     printf("-----------------------------\n");
+#endif
 }
 
 static int rpc_tx_req_id = 0;
@@ -71,11 +77,10 @@ void rpc_debug_dump_tx_request(const char *name,
                                uint32_t seq,
                                const void *buf, size_t len)
 {
-/*
+#ifndef RPC_DEBUG
     printf("\n[RPC TX] REQUEST name=%s seq=%u id:%d\n",
            name, seq, rpc_tx_req_id++);
-    ccnet_debug_hex("RPC Request", buf, len);
-*/
+#endif
 }
 
 static int rpc_tx_resp_id = 0;
@@ -84,19 +89,20 @@ void rpc_debug_dump_tx_response(uint32_t seq,
                                 uint16_t status,
                                 const void *buf, size_t len)
 {
-/*
+#ifndef RPC_DEBUG
     printf("\n[RPC TX] RESPONSE seq=%u status=%u id:%d\n",
            seq, status, rpc_tx_resp_id++);
     ccnet_debug_hex("RPC Response", buf, len);
-*/
+#endif
 }
 
 static int rpc_rx_id = 0;
-
 void rpc_debug_dump_rx(const void *buf, size_t len)
 {
+#ifndef RPC_DEBUG
     printf("\n[RPC RX] id:%d\n", rpc_rx_id++);
     ccnet_debug_hex("RPC RX", buf, len);
+#endif
 }
 
 static uint32_t rpc_next_seq(void)
@@ -379,6 +385,11 @@ static void rpc_handle_request(struct rpc_transport_class *t,
     if (m->free_param) {
         m->free_param(param_buf);
     }
+
+    if (m->free_result) {
+        m->free_result(result_buf);
+    }
+
 }
 
 static void rpc_handle_response(const struct rpc_message *msg, size_t len)
@@ -579,7 +590,8 @@ void rpc_register_method(const char *name,
                          rpc_param_parser_t parser,
                          rpc_handler_t handler,
                          rpc_result_encoder_t encoder,
-                         rpc_free_param_t free_param)
+                         rpc_free_param_t free_param,
+                         rpc_free_param_t free_result)
 {
     struct rpc_method_entry *e;
 
@@ -595,6 +607,7 @@ void rpc_register_method(const char *name,
     e->handler       = handler;
     e->encode_result = encoder;
     e->free_param = free_param;
+    e->free_result = free_result;
 
     hashmap_put(&g_methods, (void *)name, e);
 }

@@ -4,16 +4,20 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#define HEAP_DEBUG 0
+
 struct heap_stats {
-    uint32_t remain_size;
-    uint32_t free_size_iter;
-    uint32_t max_free_block;
-    uint32_t free_blocks;
+    size_t remain_size;
+    size_t free_size_iter;
+    size_t max_free_block;
+    size_t free_blocks;
 };
 
-void *heap_malloc(size_t size);
-void heap_free(void *ptr);
-
+void   heap_init(void);
+void  *heap_malloc(size_t size);
+void   heap_free(void *ptr);
 struct heap_stats heap_get_stats(void);
+void   heap_debug_dump_leaks(void);
+
 
 #endif

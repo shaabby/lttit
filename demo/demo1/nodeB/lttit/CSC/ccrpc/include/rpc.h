@@ -77,7 +77,8 @@ void rpc_register_method(const char *name,
                          rpc_param_parser_t parser,
                          rpc_handler_t handler,
                          rpc_result_encoder_t encoder,
-                         rpc_free_param_t free_param);
+                         rpc_free_param_t free_param,
+                         rpc_free_param_t free_result);
 
 /* API */
 void rpc_init(uint8_t method_cap, uint8_t pending_cap, uint8_t transport_cap);

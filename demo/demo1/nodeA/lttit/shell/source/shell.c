@@ -395,8 +395,15 @@ int cmd_fsop(int argc, char **argv)
             putchar('\n');
         }
     }
+    free_result_fs_operation(&r);
 
     return st;
+}
+
+int cmd_memleak(int argc, char **argv)
+{
+    heap_debug_dump_leaks();
+    return 0;
 }
 
 struct cmd_entry {
@@ -423,6 +430,7 @@ static struct cmd_entry cmd_table[] = {
         {"ps",     cmd_ps},
         {"remote", cmd_remote},
         {"fsop", cmd_fsop},
+        {"memleak", cmd_memleak},
         {NULL,     NULL}
 };
 

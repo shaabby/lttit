@@ -1,14 +1,30 @@
 #include "rpc_gen.h"
 #include "heap.h"
 #include <string.h>
+#include <stdint.h>
+#include <stddef.h>
 
-#ifndef RPC_MAX_WIRE_TLV_SIZE
-#define RPC_MAX_WIRE_TLV_SIZE 256
+#ifndef RPC_ALLOC
+#define RPC_ALLOC(sz) heap_malloc(sz)
 #endif
 
-// ---------------------------------------------------------
-// 1. 声明 handler（来自用户实现）
-// ---------------------------------------------------------
+#ifndef RPC_FREE
+#define RPC_FREE(p) heap_free(p)
+#endif
+
+#ifndef RPC_STRING_ALLOC
+#define RPC_STRING_ALLOC(len) heap_malloc(len)
+#endif
+
+#ifndef RPC_BYTES_ALLOC
+#define RPC_BYTES_ALLOC(len) heap_malloc(len)
+#endif
+
+#ifndef RPC_METHODS_XDEF_FILE
+#error "RPC_METHODS_XDEF_FILE must be defined"
+#endif
+
+/* declare handlers from user implementations */
 #define RPC_METHOD_PROVIDER(name, rpcname, PARAM_LIST, RESULT_LIST) \
     int name##_handler(const struct rpc_param_##name *in,           \
                        struct rpc_result_##name *out);
@@ -20,10 +36,9 @@
 #undef RPC_METHOD_PROVIDER
 #undef RPC_METHOD_REQUEST
 
+/* ---------- param parsers: TLV -> rpc_param_xxx ---------- */
 
-// ---------------------------------------------------------
-// 2. 生成参数解析器 param_parse
-// ---------------------------------------------------------
+#ifndef PARSE_FIELD_string
 #define PARSE_FIELD_string(fieldname)                                   \
     do {                                                                \
         char *s = NULL;                                                 \
@@ -33,7 +48,9 @@
         p      += used;                                                 \
         remain -= used;                                                 \
     } while (0)
+#endif
 
+#ifndef PARSE_FIELD_u32
 #define PARSE_FIELD_u32(fieldname)                                      \
     do {                                                                \
         uint32_t v = 0;                                                 \
@@ -43,7 +60,9 @@
         p      += used;                                                 \
         remain -= used;                                                 \
     } while (0)
+#endif
 
+#ifndef PARSE_FIELD_i32
 #define PARSE_FIELD_i32(fieldname)                                      \
     do {                                                                \
         int32_t v = 0;                                                  \
@@ -53,7 +72,9 @@
         p      += used;                                                 \
         remain -= used;                                                 \
     } while (0)
+#endif
 
+#ifndef PARSE_FIELD_bytes
 #define PARSE_FIELD_bytes(fieldname)                                    \
     do {                                                                \
         uint8_t *ptr = NULL;                                            \
@@ -65,6 +86,7 @@
         p      += used;                                                 \
         remain -= used;                                                 \
     } while (0)
+#endif
 
 #define FIELD(type, name) PARSE_FIELD_##type(out->name)
 #define PARAMS(...) __VA_ARGS__
@@ -94,10 +116,8 @@
 #undef FIELD
 #undef PARAMS
 
+/* ---------- result parsers: TLV -> rpc_result_xxx ---------- */
 
-// ---------------------------------------------------------
-// 3. 生成结果解析器 result_parse
-// ---------------------------------------------------------
 #define FIELD(type, name) PARSE_FIELD_##type(out->name)
 #define RESULTS(...) __VA_ARGS__
 
@@ -126,39 +146,68 @@
 #undef FIELD
 #undef RESULTS
 
+/* ---------- emit helpers for stub and result encoder ---------- */
 
-// ---------------------------------------------------------
-// 4. 生成 stub（rpc_call_xxx）
-// ---------------------------------------------------------
-#define FIELD(type, name) EMIT_FIELD_##type(tlvbuf, off, in->name)
+#ifndef RPC_EMIT_FIELD_string
+#define RPC_EMIT_FIELD_string(buf, off, value)                          \
+    do {                                                                \
+        if (value)                                                      \
+            off += tlv_write_string(&(buf)[off], value);                \
+    } while (0)
+#endif
+
+#ifndef RPC_EMIT_FIELD_u32
+#define RPC_EMIT_FIELD_u32(buf, off, value)                             \
+    do {                                                                \
+        off += tlv_write_u32(&(buf)[off], value);                       \
+    } while (0)
+#endif
+
+#ifndef RPC_EMIT_FIELD_i32
+#define RPC_EMIT_FIELD_i32(buf, off, value)                             \
+    do {                                                                \
+        off += tlv_write_i32(&(buf)[off], value);                       \
+    } while (0)
+#endif
+
+#ifndef RPC_EMIT_FIELD_bytes
+#define RPC_EMIT_FIELD_bytes(buf, off, value)                           \
+    do {                                                                \
+        off += tlv_write_bytes(&(buf)[off], (value).ptr, (value).len);  \
+    } while (0)
+#endif
+
+/* ---------- stubs: rpc_call_xxx (heap-based buffers) ---------- */
+
+#define FIELD(type, name) RPC_EMIT_FIELD_##type(tlvbuf, off, in->name)
 #define PARAMS(...) __VA_ARGS__
-
-#define EMIT_FIELD_string(buf, off, value) \
-    do { if (value) off += tlv_write_string(&(buf)[off], value); } while (0)
-
-#define EMIT_FIELD_u32(buf, off, value) \
-    do { off += tlv_write_u32(&(buf)[off], value); } while (0)
-
-#define EMIT_FIELD_i32(buf, off, value) \
-    do { off += tlv_write_i32(&(buf)[off], value); } while (0)
-
-#define EMIT_FIELD_bytes(buf, off, value) \
-    do { if ((value).ptr && (value).len) off += tlv_write_bytes(&(buf)[off], (value).ptr, (value).len); } while (0)
 
 #define GEN_STUB(name, rpcname, PARAM_LIST, RESULT_LIST)                \
     int rpc_call_##name(const struct rpc_param_##name *in,              \
                         struct rpc_result_##name *out)                  \
     {                                                                   \
-        uint8_t tlvbuf[RPC_MAX_WIRE_TLV_SIZE];                          \
-        size_t  off = 0;                                                \
-        memset(tlvbuf, 0, sizeof(tlvbuf));                              \
+        uint8_t *tlvbuf = (uint8_t *)RPC_ALLOC(RPC_WIRE_BUF_SIZE);      \
+        if (!tlvbuf)                                                    \
+            return -1;                                                  \
+        memset(tlvbuf, 0, RPC_WIRE_BUF_SIZE);                           \
+        size_t off = 0;                                                 \
         do { PARAM_LIST } while (0);                                    \
-        uint8_t resp[RPC_MAX_WIRE_TLV_SIZE];                            \
-        size_t  resp_len = sizeof(resp);                                \
-        memset(resp, 0, sizeof(resp));                                  \
+                                                                        \
+        uint8_t *resp = (uint8_t *)RPC_ALLOC(RPC_WIRE_BUF_SIZE);        \
+        if (!resp) {                                                    \
+            RPC_FREE(tlvbuf);                                           \
+            return -1;                                                  \
+        }                                                               \
+        memset(resp, 0, RPC_WIRE_BUF_SIZE);                             \
+        size_t resp_len = RPC_WIRE_BUF_SIZE;                            \
+                                                                        \
         int st = rpc_call_with_tlv(rpcname, tlvbuf, off, resp, &resp_len); \
-        if (st != 0) return st;                                         \
-        return rpc_result_parse_##name(resp, resp_len, out);            \
+        if (st == 0)                                                    \
+            st = rpc_result_parse_##name(resp, resp_len, out);          \
+                                                                        \
+        RPC_FREE(tlvbuf);                                               \
+        RPC_FREE(resp);                                                 \
+        return st;                                                      \
     }
 
 #define RPC_METHOD_PROVIDER(name, rpcname, PARAM_LIST, RESULT_LIST) \
@@ -175,11 +224,9 @@
 #undef FIELD
 #undef PARAMS
 
+/* ---------- result encoders: rpc_result_xxx -> TLV ---------- */
 
-// ---------------------------------------------------------
-// 5. 生成结果编码器 encode_result
-// ---------------------------------------------------------
-#define FIELD(type, name) EMIT_FIELD_##type(buf, off, r->name)
+#define FIELD(type, name) RPC_EMIT_FIELD_##type(buf, off, r->name)
 #define RESULTS(...) __VA_ARGS__
 
 #define GEN_RESULT_ENCODER(name, rpcname, PARAM_LIST, RESULT_LIST)      \
@@ -188,7 +235,7 @@
     {                                                                   \
         struct rpc_result_##name *r = result_struct;                    \
         size_t off = 0;                                                 \
-        memset(buf, 0, RPC_MAX_WIRE_TLV_SIZE);                          \
+        memset(buf, 0, RPC_WIRE_BUF_SIZE);                              \
         do { RESULT_LIST } while (0);                                   \
         *out_len = off;                                                 \
         return 0;                                                       \
@@ -207,24 +254,30 @@
 #undef FIELD
 #undef RESULTS
 
+/* ---------- free_param_xxx: free heap fields in param structs ---------- */
 
-// ---------------------------------------------------------
-// 6. 自动生成 free_param_xxx()
-// ---------------------------------------------------------
 #define FIELD(type, name) FREE_FIELD_##type(p->name)
 #define PARAMS(...) __VA_ARGS__
 
+#ifndef FREE_FIELD_string
 #define FREE_FIELD_string(fieldname) \
-    do { if (fieldname) heap_free(fieldname); } while (0)
+    do { if (fieldname) RPC_FREE(fieldname); } while (0)
+#endif
 
+#ifndef FREE_FIELD_u32
 #define FREE_FIELD_u32(fieldname) \
     do { } while (0)
+#endif
 
+#ifndef FREE_FIELD_i32
 #define FREE_FIELD_i32(fieldname) \
     do { } while (0)
+#endif
 
+#ifndef FREE_FIELD_bytes
 #define FREE_FIELD_bytes(fieldname) \
-    do { if ((fieldname).ptr) heap_free((fieldname).ptr); } while (0)
+    do { if ((fieldname).ptr) RPC_FREE((fieldname).ptr); } while (0)
+#endif
 
 #define GEN_FREE_PARAM(name, rpcname, PARAM_LIST, RESULT_LIST) \
     void free_param_##name(struct rpc_param_##name *p)         \
@@ -245,15 +298,34 @@
 #undef GEN_FREE_PARAM
 #undef FIELD
 #undef PARAMS
-#undef FREE_FIELD_string
-#undef FREE_FIELD_u32
-#undef FREE_FIELD_i32
-#undef FREE_FIELD_bytes
 
+/* ---------- free_result_xxx: free heap fields in result structs ---------- */
 
-// ---------------------------------------------------------
-// 7. 生成注册函数（含 free_param）
-// ---------------------------------------------------------
+#define FIELD(type, name) FREE_FIELD_##type(r->name)
+#define RESULTS(...) __VA_ARGS__
+
+#define GEN_FREE_RESULT(name, rpcname, PARAM_LIST, RESULT_LIST) \
+    void free_result_##name(struct rpc_result_##name *r)        \
+    {                                                           \
+        do { RESULT_LIST } while (0);                           \
+    }
+
+#define RPC_METHOD_PROVIDER(name, rpcname, PARAM_LIST, RESULT_LIST) \
+    GEN_FREE_RESULT(name, rpcname, PARAM_LIST, RESULT_LIST)
+
+#define RPC_METHOD_REQUEST(name, rpcname, PARAM_LIST, RESULT_LIST) \
+    GEN_FREE_RESULT(name, rpcname, PARAM_LIST, RESULT_LIST)
+
+#include RPC_METHODS_XDEF_FILE
+
+#undef RPC_METHOD_PROVIDER
+#undef RPC_METHOD_REQUEST
+#undef GEN_FREE_RESULT
+#undef FIELD
+#undef RESULTS
+
+/* ---------- per-method register functions ---------- */
+
 #define RPC_METHOD_PROVIDER(name, rpcname, PARAM_LIST, RESULT_LIST)     \
     void rpc_register_##name(void)                                      \
     {                                                                   \
@@ -262,7 +334,8 @@
             (rpc_param_parser_t)rpc_param_parse_##name,                 \
             (rpc_handler_t)name##_handler,                              \
             (rpc_result_encoder_t)encode_result_##name,                 \
-            (rpc_free_param_t)free_param_##name                         \
+            (rpc_free_param_t)free_param_##name,                        \
+            (rpc_free_param_t)free_result_##name                        \
         );                                                              \
     }
 
@@ -273,10 +346,8 @@
 #undef RPC_METHOD_PROVIDER
 #undef RPC_METHOD_REQUEST
 
+/* ---------- register all ---------- */
 
-// ---------------------------------------------------------
-// 8. 注册所有方法
-// ---------------------------------------------------------
 #define RPC_METHOD_PROVIDER(name, rpcname, PARAM_LIST, RESULT_LIST) \
     rpc_register_##name();
 
