@@ -80,7 +80,7 @@ include_directories(
 
 
 target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE
-        RPC_METHODS_XDEF_FILE=\"${CMAKE_CURRENT_SOURCE_DIR}/lttit/CSC/ccrpc/include/rpc_methods_nodeA.xdef\"
+        RPC_METHODS_XDEF_FILE=\"${CMAKE_CURRENT_SOURCE_DIR}/lttit/CSC/ccrpc/include/rpc_methods_node.xdef\"
 )
 
 

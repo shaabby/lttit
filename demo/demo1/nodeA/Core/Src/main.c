@@ -65,6 +65,8 @@ void SystemClock_Config(void);
 #include "comm.h"
 #include "scp.h"
 #include "timer.h"
+#include "rpc.h"
+#include "rpc_gen.h"
 #include <stdio.h>
 #include <memory.h>
 
@@ -74,6 +76,27 @@ extern UART_HandleTypeDef huart2;
 #define NODE_ID_A   1
 #define NODE_ID_B   2
 #define NODE_COUNT  3
+
+struct rpc_transport_class *g_rpc_transport = NULL;
+
+static size_t rpc_scp_send(void *user, const uint8_t *buf, size_t len)
+{
+    (void)user;
+    return (size_t)scp_send(NODE_ID_A, (void *)buf, (int)len);
+}
+
+static size_t rpc_scp_recv(void *user, uint8_t *buf, size_t maxlen)
+{
+    (void)user;
+    (void)buf;
+    (void)maxlen;
+    return 0;
+}
+
+static void rpc_scp_close(void *user)
+{
+    (void)user;
+}
 
 static int pc_provider(void *ctx, void *data, size_t len)
 {
@@ -118,6 +141,7 @@ void process(void)
         memset(appbuf, 0, sizeof(appbuf));
         int rn = scp_recv(1, appbuf, sizeof(appbuf));
         if (rn > 0) {
+            rpc_on_data(g_rpc_transport, appbuf, (size_t)rn);
             printf("%s\r\n", appbuf);
         }
     }
@@ -226,6 +250,17 @@ void APP(void)
     scp_init(4);
     scp_stream_alloc(&scp_trans, scp_fd_AtoB, scp_fd_AtoB);
     timer_create(timer_excu, 10, run);
+
+    rpc_init(4, 4, 4);
+    rpc_register_all();
+    g_rpc_transport =
+            rpc_trans_class_create((void *)rpc_scp_send,
+                                   (void *)rpc_scp_recv,
+                                   (void *)rpc_scp_close,
+                                   NULL);
+
+    rpc_bind_transport("fs.operation", g_rpc_transport);
+
     HAL_Delay(100);
     task_create(process_rcv, 256, NULL, 0, 12, 0, &t_process);
     task_create(task_shell, 1024, NULL, 4, 10, 0, &t_shell);

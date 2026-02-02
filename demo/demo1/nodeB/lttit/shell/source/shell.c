@@ -2,8 +2,15 @@
 #include <string.h>
 #include <stdlib.h>
 #include "shell.h"
+
+#if SHELL_ENABLE_VIM
 #include "vim.h"
+#endif
+
+#if SHELL_ENABLE_FS
 #include "fs.h"
+#endif
+
 #include "comm.h"
 #include "schedule.h"
 #include "heap.h"
@@ -71,12 +78,14 @@ static void make_abs_path(char *out, const char *in)
     normalize_path(out);
 }
 
+#if SHELL_ENABLE_FS
 static int fs_is_dir(const char *p)
 {
     struct dirent tmp[1];
     int nread = 0;
     return fs_readdir(p, tmp, 1, &nread) == 0;
 }
+#endif
 
 int shell_readline(char *buf, int max)
 {
@@ -128,6 +137,7 @@ int shell_parse(char *line, char **argv, int max)
     return argc;
 }
 
+#if SHELL_ENABLE_FS
 int cmd_ls(int argc, char **argv)
 {
     memset(path, 0, sizeof(path));
@@ -139,16 +149,11 @@ int cmd_ls(int argc, char **argv)
 
     struct dirent *ents =
             heap_malloc(sizeof(struct dirent) * SHELL_LS_MAX_ENTRIES);
-    if (!ents) {
-        comm_write("ls: no memory\r\n", 16);
+    if (!ents)
         return -1;
-    }
 
     int n = 0;
     if (fs_readdir(path, ents, SHELL_LS_MAX_ENTRIES, &n) < 0) {
-        comm_write("ls: cannot open ", 16);
-        comm_write(path, (int)strlen(path));
-        comm_write("\r\n", 2);
         heap_free(ents);
         return -1;
     }
@@ -165,21 +170,15 @@ int cmd_ls(int argc, char **argv)
 
 int cmd_cat(int argc, char **argv)
 {
-    if (argc < 2) {
-        comm_write("usage: cat FILE\r\n", 18);
+    if (argc < 2)
         return -1;
-    }
 
     memset(path, 0, sizeof(path));
     make_abs_path(path, argv[1]);
 
     struct inode *ino;
-    if (fs_open(path, 0, &ino) < 0) {
-        comm_write("cat: cannot open ", 18);
-        comm_write(argv[1], (int)strlen(argv[1]));
-        comm_write("\r\n", 2);
+    if (fs_open(path, 0, &ino) < 0)
         return -1;
-    }
 
     uint32_t off = 0;
     int r;
@@ -206,21 +205,15 @@ int cmd_cat(int argc, char **argv)
 
 int cmd_touch(int argc, char **argv)
 {
-    if (argc < 2) {
-        comm_write("usage: touch FILE\r\n", 20);
+    if (argc < 2)
         return -1;
-    }
 
     memset(path, 0, sizeof(path));
     make_abs_path(path, argv[1]);
 
     struct inode *ino;
-    if (fs_open(path, O_CREAT, &ino) < 0) {
-        comm_write("touch: cannot create ", 23);
-        comm_write(path, (int)strlen(path));
-        comm_write("\r\n", 2);
+    if (fs_open(path, O_CREAT, &ino) < 0)
         return -1;
-    }
 
     fs_close(ino);
     return 0;
@@ -228,53 +221,29 @@ int cmd_touch(int argc, char **argv)
 
 int cmd_mkdir(int argc, char **argv)
 {
-    if (argc < 2) {
-        comm_write("usage: mkdir DIR\r\n", 19);
+    if (argc < 2)
         return -1;
-    }
 
     memset(path, 0, sizeof(path));
     make_abs_path(path, argv[1]);
 
     struct inode *ino;
-    if (fs_mkdir(path, &ino) < 0) {
-        comm_write("mkdir: cannot create ", 23);
-        comm_write(path, (int)strlen(path));
-        comm_write("\r\n", 2);
+    if (fs_mkdir(path, &ino) < 0)
         return -1;
-    }
 
-    return 0;
-}
-
-int cmd_vim(int argc, char **argv)
-{
-    if (argc < 2) {
-        comm_write("usage: vim FILE\r\n", 17);
-        return -1;
-    }
-
-    memset(shell_abs, 0, sizeof(shell_abs));
-    make_abs_path(shell_abs, argv[1]);
-
-    vim_main(shell_abs);
     return 0;
 }
 
 int cmd_cd(int argc, char **argv)
 {
-    if (argc < 2) {
-        comm_write("usage: cd <dir>\r\n", 17);
+    if (argc < 2)
         return -1;
-    }
 
     memset(path, 0, sizeof(path));
     make_abs_path(path, argv[1]);
 
-    if (!fs_is_dir(path)) {
-        comm_write("cd: no such directory\r\n", 25);
+    if (!fs_is_dir(path))
         return -1;
-    }
 
     strcpy(cwd, path);
     return 0;
@@ -282,21 +251,30 @@ int cmd_cd(int argc, char **argv)
 
 int cmd_sync(int argc, char **argv)
 {
-    (void)argv;
-    if (argc != 1) {
-        comm_write("usage: sync\r\n", 12);
+    if (argc != 1)
         return -1;
-    }
 
     fs_sync();
     return 0;
 }
+#endif
+
+#if SHELL_ENABLE_VIM
+int cmd_vim(int argc, char **argv)
+{
+    if (argc < 2)
+        return -1;
+
+    memset(shell_abs, 0, sizeof(shell_abs));
+    make_abs_path(shell_abs, argv[1]);
+
+    vim_main(shell_abs);
+    return 0;
+}
+#endif
 
 int cmd_mem(int argc, char **argv)
 {
-    (void)argc;
-    (void)argv;
-
     struct heap_stats st = heap_get_stats();
     char buf[128];
 
@@ -318,9 +296,6 @@ int cmd_mem(int argc, char **argv)
 
 int cmd_ps(int argc, char **argv)
 {
-    (void)argc;
-    (void)argv;
-
     char buf[160];
     struct task_info info;
 
@@ -355,12 +330,8 @@ int cmd_ps(int argc, char **argv)
 
 int cmd_remote(int argc, char **argv)
 {
-    if (argc < 3) {
-        comm_write("usage: remote <node_id> <cmd...>\r\n", 33);
+    if (argc < 3)
         return -1;
-    }
-
-    (void)atoi(argv[1]);
 
     char buf[SHELL_REMOTE_MAX_CMD];
     size_t pos = 0;
@@ -391,13 +362,20 @@ struct cmd_entry {
 };
 
 static struct cmd_entry cmd_table[] = {
+
+#if SHELL_ENABLE_FS
         {"ls",     cmd_ls},
         {"cat",    cmd_cat},
         {"touch",  cmd_touch},
         {"mkdir",  cmd_mkdir},
-        {"vim",    cmd_vim},
         {"cd",     cmd_cd},
         {"sync",   cmd_sync},
+#endif
+
+#if SHELL_ENABLE_VIM
+        {"vim",    cmd_vim},
+#endif
+
         {"mem",    cmd_mem},
         {"ps",     cmd_ps},
         {"remote", cmd_remote},

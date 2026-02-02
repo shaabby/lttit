@@ -1,6 +1,6 @@
 #include "rpc_tlv.h"
+#include "heap.h"
 #include <string.h>
-#include <stdlib.h>
 
 size_t tlv_write_u32(uint8_t *buf, uint32_t v) {
     buf[0] = 0x01;
@@ -12,7 +12,7 @@ size_t tlv_write_u32(uint8_t *buf, uint32_t v) {
 
 size_t tlv_write_bytes(uint8_t *buf, const uint8_t *data, size_t len)
 {
-    buf[0] = 0x03;              // bytes 类型
+    buf[0] = 0x03;
     buf[1] = len & 0xFF;
     buf[2] = (len >> 8) & 0xFF;
     memcpy(&buf[3], data, len);
@@ -54,7 +54,7 @@ size_t tlv_read_string(const uint8_t *buf, size_t buf_len, char **out)
     if (used == 0 || type != 0x02)
         return 0;
 
-    char *s = malloc(len + 1);
+    char *s = heap_malloc(len + 1);
     memcpy(s, value, len);
     s[len] = '\0';
 
@@ -101,7 +101,7 @@ size_t tlv_read_bytes(const uint8_t *buf, size_t buf_len,
     if (used == 0 || type != 0x03)
         return 0;
 
-    uint8_t *p = malloc(len);
+    uint8_t *p = heap_malloc(len);
     memcpy(p, value, len);
 
     *ptr = p;

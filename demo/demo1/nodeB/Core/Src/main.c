@@ -66,11 +66,12 @@ void SystemClock_Config(void);
 #include "common.h"
 #include "scp.h"
 #include "timer.h"
+#include "rpc_gen.h"
 #include <memory.h>
 #include <stdio.h>
 
 extern UART_HandleTypeDef huart1;
-
+struct rpc_transport_class *rt;
 #define NODE_ID_A 1
 #define NODE_ID_B 2
 #define NODE_COUNT 3
@@ -82,6 +83,25 @@ uint8_t packet[256];
 
 #define START 0xA55AA55A
 #define CLOSE 0xDEAD5A5A
+
+static size_t rpc_scp_send(void *user, const uint8_t *buf, size_t len)
+{
+    return (size_t)scp_send(NODE_ID_A, (void *)buf, (int)len);
+}
+
+static size_t rpc_scp_recv(void *user, uint8_t *buf, size_t maxlen)
+{
+    (void)user;
+    (void)buf;
+    (void)maxlen;
+    return 0;
+}
+
+static void rpc_scp_close(void *user)
+{
+    (void)user;
+}
+
 
 /* ---------- SCP transport & stream ---------- */
 
@@ -216,6 +236,7 @@ static void task_scp_shell(void *ctx)
         task_enter();
         int rn = scp_recv(SCP_FD_B2A, buf, sizeof(buf));
         if (rn > 0) {
+            rpc_on_data(rt, buf, (size_t)rn);
             shell_on_message(buf, (size_t)rn);
         }
         task_exit();
@@ -263,14 +284,21 @@ void APP(void)
     scp_init(4);
     scp_stream_alloc(&scp_trans, SCP_FD_B2A, SCP_FD_B2A);
 
+    rpc_init(4, 4, 4);
+    rpc_register_all();
+    rt = rpc_trans_class_create((void *)rpc_scp_send,
+                                  (void *)rpc_scp_recv,
+                                  (void *)rpc_scp_close,
+                                  NULL);
+
+    rpc_bind_transport("fs.operation", rt);
+
     struct superblock sb;
     fs_port_init();
     if (fs_port_mount(&sb) != 0)
         printf("FS mount failed!\r\n");
     else
         printf("FS mounted OK!\r\n");
-
-    //fs_init_hello();
 
     sem = semaphore_create(0);
     __HAL_UART_CLEAR_OREFLAG(&huart1);

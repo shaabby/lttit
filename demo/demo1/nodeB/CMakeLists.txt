@@ -47,6 +47,7 @@ file(GLOB SCP_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/lttit/CSC/scp/source/*.c")
 file(GLOB FS_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/lttit/fs/source/*.c")
 file(GLOB SHELL_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/lttit/shell/source/*.c")
 file(GLOB VIM_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/lttit/vim/source/*.c")
+file(GLOB CCRPC_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/lttit/CSC/ccrpc/source/*.c")
 
 add_executable(${CMAKE_PROJECT_NAME}
         ${RTOS_SOURCES}
@@ -58,6 +59,12 @@ add_executable(${CMAKE_PROJECT_NAME}
         ${FS_SOURCES}
         ${SHELL_SOURCES}
         ${VIM_SOURCES}
+        ${CCRPC_SOURCES}
+        lttit/CSC/ccrpc/include/rpc_port.h
+        lttit/CSC/ccrpc/source/rpc_port.c
+        lttit/fs/include/fs_rpc.h
+        lttit/fs/source/fs_rpc.c
+        lttit/lib/source/hashmap.c
 )
 
 
@@ -72,11 +79,15 @@ include_directories(
         ${CMAKE_CURRENT_SOURCE_DIR}/lttit/fs/include
         ${CMAKE_CURRENT_SOURCE_DIR}/lttit/shell/include
         ${CMAKE_CURRENT_SOURCE_DIR}/lttit/vim/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/lttit/CSC/ccrpc/include
 
 
 )
 
 
+target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE
+        RPC_METHODS_XDEF_FILE=\"${CMAKE_CURRENT_SOURCE_DIR}/lttit/CSC/ccrpc/include/rpc_methods_node.xdef\"
+)
 
 
 

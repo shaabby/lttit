@@ -1,0 +1,14 @@
+RPC_METHOD_REQUEST(
+    fs_operation,
+    "fs.operation",
+    PARAMS(
+        FIELD(string, path);
+        FIELD(u32, flags);
+        FIELD(u32, read_size);
+    ),
+    RESULTS(
+        FIELD(bytes, read_data);
+        FIELD(u32, read_len);
+        FIELD(u32, status);
+    )
+)

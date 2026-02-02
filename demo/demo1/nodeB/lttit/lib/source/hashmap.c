@@ -1,5 +1,5 @@
 #include "hashmap.h"
-#include <stdlib.h>
+#include "heap.h"
 #include <string.h>
 
 __attribute__((always_inline)) inline uword_t next_power_of_two(uword_t x)
@@ -51,7 +51,7 @@ void hashmap_init(struct hashmap *map, size_t bucket_count, int key_type)
     map->bucket_count = count;
     map->key_type = key_type;
 
-    map->buckets = malloc(sizeof(struct list_node) * count);
+    map->buckets = heap_malloc(sizeof(struct list_node) * count);
     for (uword_t i = 0; i < count; i++)
         list_node_init(&map->buckets[i]);
 }
@@ -75,7 +75,7 @@ void hashmap_put(struct hashmap *map, void *key, void *value)
         }
     }
 
-    struct hashmap_entry *entry = malloc(sizeof(struct hashmap_entry));
+    struct hashmap_entry *entry = heap_malloc(sizeof(struct hashmap_entry));
     entry->key = key;
     entry->value = value;
     list_node_init(&entry->node);
@@ -104,7 +104,7 @@ int hashmap_remove(struct hashmap *map, void *key)
         struct hashmap_entry *e = container_of(p, struct hashmap_entry, node);
         if (hashmap_key_equal(map, e->key, key)) {
             list_remove(&e->node);
-            free(e);
+            heap_free(e);
             return 1;
         }
     }
@@ -122,4 +122,42 @@ int hashmap_contains(struct hashmap *map, void *key)
             return 1;
     }
     return 0;
+}
+
+
+void hashmap_destroy(struct hashmap *map)
+{
+    if (!map || !map->buckets)
+        return;
+
+    for (uword_t i = 0; i < map->bucket_count; i++) {
+        struct list_node *bucket = &map->buckets[i];
+        struct list_node *p = bucket->next;
+
+        while (p != bucket) {
+            struct hashmap_entry *e = container_of(p, struct hashmap_entry, node);
+            p = p->next;
+            list_remove(&e->node);
+            heap_free(e);
+        }
+    }
+
+    heap_free(map->buckets);
+    map->buckets = NULL;
+    map->bucket_count = 0;
+}
+
+void hashmap_clear(struct hashmap *map)
+{
+    for (uword_t i = 0; i < map->bucket_count; i++) {
+        struct list_node *bucket = &map->buckets[i];
+        struct list_node *p = bucket->next;
+
+        while (p != bucket) {
+            struct hashmap_entry *e = container_of(p, struct hashmap_entry, node);
+            p = p->next;
+            list_remove(&e->node);
+            heap_free(e);
+        }
+    }
 }

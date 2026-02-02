@@ -43,5 +43,7 @@ void hashmap_put(struct hashmap *map, void *key, void *value);
 void *hashmap_get(struct hashmap *map, void *key);
 int hashmap_remove(struct hashmap *map, void *key);
 int hashmap_contains(struct hashmap *map, void *key);
+void hashmap_destroy(struct hashmap *map);
+void hashmap_clear(struct hashmap *map);
 
 #endif

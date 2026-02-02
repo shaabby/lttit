@@ -1,4 +1,5 @@
 #include "radix.h"
+#include "heap.h"
 
 
 __attribute__((always_inline)) inline uint8_t log2_clz64(uint64_t value)

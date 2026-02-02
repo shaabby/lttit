@@ -77,5 +77,6 @@ struct task_info {
 
 int rtos_get_task_info(uint32_t pid, struct task_info *out);
 void rtos_task_change_prio(TaskHandle_t t, uint32_t new_prio);
+uint32_t rtos_now_time(void);
 
 #endif

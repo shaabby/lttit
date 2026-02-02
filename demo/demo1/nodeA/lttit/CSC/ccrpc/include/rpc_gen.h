@@ -1,11 +1,10 @@
-#ifndef RPC_GEN_H 
+#ifndef RPC_GEN_H
 #define RPC_GEN_H
 
 #include <stdint.h>
 #include <stddef.h>
 #include "rpc_tlv.h"
 #include "rpc.h"
-
 
 typedef char*    rpc_string_t;
 typedef uint32_t rpc_u32_t;
@@ -16,13 +15,7 @@ typedef struct {
     size_t   len;
 } rpc_bytes_t;
 
-/* ============================================
- * 生成 param/result struct
- *  - PROVIDER 和 REQUEST 都要
- * ============================================ */
-
 #define FIELD(type, name) rpc_##type##_t name;
-
 #define PARAMS(...)  __VA_ARGS__
 #define RESULTS(...) __VA_ARGS__
 
@@ -42,28 +35,24 @@ typedef struct {
 #undef PARAMS
 #undef RESULTS
 
-/* ============================================
- * 生成 parser / stub / register 声明
- * ============================================ */
-
 #define RPC_METHOD_PROVIDER(name, rpcname, PARAM_LIST, RESULT_LIST) \
-    int rpc_param_parse_##name(const uint8_t *tlv, size_t len, struct rpc_param_##name *out); \
-    int rpc_result_parse_##name(const uint8_t *tlv, size_t len, struct rpc_result_##name *out); \
-    int rpc_call_##name(const struct rpc_param_##name *in, struct rpc_result_##name *out); \
-    void rpc_register_##name(void);  /* provider 特有 */
+    int  rpc_param_parse_##name(const uint8_t *tlv, size_t len, struct rpc_param_##name *out); \
+    int  rpc_result_parse_##name(const uint8_t *tlv, size_t len, struct rpc_result_##name *out); \
+    int  rpc_call_##name(const struct rpc_param_##name *in, struct rpc_result_##name *out); \
+    void rpc_register_##name(void); \
+    void free_param_##name(struct rpc_param_##name *p);
 
 #define RPC_METHOD_REQUEST(name, rpcname, PARAM_LIST, RESULT_LIST) \
-    int rpc_param_parse_##name(const uint8_t *tlv, size_t len, struct rpc_param_##name *out); \
-    int rpc_result_parse_##name(const uint8_t *tlv, size_t len, struct rpc_result_##name *out); \
-    int rpc_call_##name(const struct rpc_param_##name *in, struct rpc_result_##name *out); \
-    /* requester 不声明 rpc_register_xxx */
+    int  rpc_param_parse_##name(const uint8_t *tlv, size_t len, struct rpc_param_##name *out); \
+    int  rpc_result_parse_##name(const uint8_t *tlv, size_t len, struct rpc_result_##name *out); \
+    int  rpc_call_##name(const struct rpc_param_##name *in, struct rpc_result_##name *out); \
+    void free_param_##name(struct rpc_param_##name *p);
 
 #include RPC_METHODS_XDEF_FILE
 
 #undef RPC_METHOD_PROVIDER
 #undef RPC_METHOD_REQUEST
 
-/* 只有 PROVIDER 方法会被纳入 rpc_register_all */
 void rpc_register_all(void);
 
 #endif

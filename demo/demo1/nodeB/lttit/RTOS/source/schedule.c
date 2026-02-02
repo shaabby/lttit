@@ -18,7 +18,7 @@
 #define sched_log(fmt, ...) do {} while (0)
 #endif
 
-#define BE_DEFAULT_TIMESLICE 2
+#define BE_DEFAULT_TIMESLICE 4
 
 static spinlock_t sched_lock;
 volatile uint32_t preempt_count;
@@ -39,7 +39,9 @@ static struct hashmap pid_map;
 
 volatile uint32_t NowTickCount = 0;
 static uint32_t next_pid = 1;
-static uint32_t global_congestion = 0;
+
+static uint32_t rt_exec_pressure = 0;
+static uint32_t rt_avg_exec = 0;
 
 struct TCB_t {
     volatile uint32_t *pxTopOfStack;
@@ -73,6 +75,11 @@ uint8_t task_is_rt(TaskHandle_t t)
     return t->deadline != 0;
 }
 
+uint32_t rtos_now_time(void)
+{
+    return NowTickCount;
+}
+
 uint32_t task_get_sched_prio(TaskHandle_t t)
 {
     if (task_is_rt(t))
@@ -96,8 +103,7 @@ static inline uint32_t rt_prio_value(TaskHandle_t t)
 
 static inline uint32_t be_prio_value(TaskHandle_t t)
 {
-    uint32_t load = t->respondLine + global_congestion;
-    return load;
+    return t->respondLine;
 }
 
 static inline uint32_t ipc_prio_value(TaskHandle_t t)
@@ -405,6 +411,18 @@ uint32_t task_create(TaskFunction_t task_code,
     return new_tcb->pid;
 }
 
+static inline uint32_t be_timeslice(void)
+{
+    uint32_t base = rt_avg_exec ? rt_avg_exec : 1;
+
+    if (rt_exec_pressure > base * 4)
+        return 1;
+    else if (rt_exec_pressure > base * 1)
+        return 2;
+    else
+        return BE_DEFAULT_TIMESLICE;
+}
+
 void task_delete(TaskHandle_t self)
 {
     scheduler_lock();
@@ -463,16 +481,25 @@ uint32_t task_exit(void)
         uint32_t old = self->SmoothTime;
 
         self->SmoothTime = (old * 7 + new_period) >> 3;
-        if (self->deadline != 0 && self->period != 0) {
+
+        if (task_is_rt(self) && self->period != 0) {
+            if (rt_avg_exec == 0)
+                rt_avg_exec = new_period;
+            else
+                rt_avg_exec = (rt_avg_exec * 7 + new_period) >> 3;
+
             if (new_period > old) {
-                if (global_congestion < 100000)
-                    global_congestion++;
+                if (rt_exec_pressure < 100000)
+                    rt_exec_pressure++;
             } else {
-                global_congestion = global_congestion - (global_congestion >> 3);
+                if (rt_exec_pressure > 0)
+                    rt_exec_pressure -= (rt_exec_pressure >> 3) + 1;
             }
         }
     } else {
         self->SmoothTime = new_period;
+        if (task_is_rt(self))
+            rt_avg_exec = new_period;
     }
 
     if (self->deadline && NowTickCount > self->abs_deadline)
@@ -532,7 +559,7 @@ void task_switch_context(void)
         next = leisureTcb;
 
     if (next && !task_is_rt(next) && next != leisureTcb)
-        next->time_slice = BE_DEFAULT_TIMESLICE;
+        next->time_slice = be_timeslice();
 
     schedule_currentTCB = next;
 
@@ -546,6 +573,8 @@ void scheduler_init(void)
     spinlock_init(&sched_lock);
     preempt_count = 0;
     need_resched = 0;
+    rt_exec_pressure = 0;
+    rt_avg_exec = 0;
     adt_tree_init();
     hashmap_init(&pid_map, TASK_COUNT, HASHMAP_KEY_INT);
     tree_delay_init();
