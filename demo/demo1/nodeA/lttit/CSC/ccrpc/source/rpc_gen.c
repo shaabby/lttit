@@ -184,7 +184,8 @@
 
 #define GEN_STUB(name, rpcname, PARAM_LIST, RESULT_LIST)                \
     int rpc_call_##name(const struct rpc_param_##name *in,              \
-                        struct rpc_result_##name *out)                  \
+                        struct rpc_result_##name *out,                  \
+                        uint32_t timeout_ms)                  \
     {                                                                   \
         uint8_t *tlvbuf = (uint8_t *)RPC_ALLOC(RPC_WIRE_BUF_SIZE);      \
         if (!tlvbuf)                                                    \
@@ -201,7 +202,7 @@
         memset(resp, 0, RPC_WIRE_BUF_SIZE);                             \
         size_t resp_len = RPC_WIRE_BUF_SIZE;                            \
                                                                         \
-        int st = rpc_call_with_tlv(rpcname, tlvbuf, off, resp, &resp_len); \
+        int st = rpc_call_with_tlv(rpcname, tlvbuf, off, resp, &resp_len, timeout_ms); \
         if (st == 0)                                                    \
             st = rpc_result_parse_##name(resp, resp_len, out);          \
                                                                         \
@@ -210,8 +211,7 @@
         return st;                                                      \
     }
 
-#define RPC_METHOD_PROVIDER(name, rpcname, PARAM_LIST, RESULT_LIST) \
-    GEN_STUB(name, rpcname, PARAM_LIST, RESULT_LIST)
+#define RPC_METHOD_PROVIDER(name, rpcname, PARAM_LIST, RESULT_LIST)
 
 #define RPC_METHOD_REQUEST(name, rpcname, PARAM_LIST, RESULT_LIST) \
     GEN_STUB(name, rpcname, PARAM_LIST, RESULT_LIST)

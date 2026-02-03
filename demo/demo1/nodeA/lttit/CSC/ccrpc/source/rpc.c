@@ -529,7 +529,8 @@ struct rpc_transport_class *rpc_transport_lookup(const char *name)
 
 int rpc_call_with_tlv(const char *name,
                       const uint8_t *tlv, size_t tlv_len,
-                      uint8_t *out_tlv, size_t *out_len)
+                      uint8_t *out_tlv, size_t *out_len,
+                      uint32_t timeout_ms)
 {
     uint32_t seq;
     struct rpc_transport_class *t;
@@ -569,7 +570,7 @@ int rpc_call_with_tlv(const char *name,
         return -RPC_STATUS_TRANSPORT_ERROR;
     }
 
-    int wait_ret = rpc_waiter_wait(pc->waiter, RPC_TIMEOUT_MS);
+    int wait_ret = rpc_waiter_wait(pc->waiter, timeout_ms);
 
     hashmap_remove(&g_pending, (void *)(uintptr_t)seq);
 

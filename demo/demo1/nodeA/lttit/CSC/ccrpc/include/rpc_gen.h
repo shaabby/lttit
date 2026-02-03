@@ -40,7 +40,6 @@ typedef struct {
 #define RPC_METHOD_PROVIDER(name, rpcname, PARAM_LIST, RESULT_LIST) \
     int  rpc_param_parse_##name(const uint8_t *tlv, size_t len, struct rpc_param_##name *out); \
     int  rpc_result_parse_##name(const uint8_t *tlv, size_t len, struct rpc_result_##name *out); \
-    int  rpc_call_##name(const struct rpc_param_##name *in, struct rpc_result_##name *out); \
     void rpc_register_##name(void); \
     void free_param_##name(struct rpc_param_##name *p); \
     void free_result_##name(struct rpc_result_##name *r);
@@ -48,7 +47,7 @@ typedef struct {
 #define RPC_METHOD_REQUEST(name, rpcname, PARAM_LIST, RESULT_LIST) \
     int  rpc_param_parse_##name(const uint8_t *tlv, size_t len, struct rpc_param_##name *out); \
     int  rpc_result_parse_##name(const uint8_t *tlv, size_t len, struct rpc_result_##name *out); \
-    int  rpc_call_##name(const struct rpc_param_##name *in, struct rpc_result_##name *out); \
+    int  rpc_call_##name(const struct rpc_param_##name *in, struct rpc_result_##name *out, uint32_t timeout_ms); \
     void free_param_##name(struct rpc_param_##name *p); \
     void free_result_##name(struct rpc_result_##name *r);
 

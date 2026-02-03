@@ -14,8 +14,6 @@ typedef enum {
     RPC_STATUS_TIMEOUT          = 5,
 } rpc_status_t;
 
-#define RPC_TIMEOUT_MS 1000
-
 #define MTU 256
 
 struct rpc_buf {
@@ -69,9 +67,10 @@ typedef int (*rpc_result_encoder_t)(
 typedef void (*rpc_free_param_t)(void *param);
 
 
-int rpc_call_with_tlv(const char *method,
+int rpc_call_with_tlv(const char *name,
                       const uint8_t *tlv, size_t tlv_len,
-                      uint8_t *resp_tlv, size_t *resp_len);
+                      uint8_t *out_tlv, size_t *out_len,
+                      uint32_t timeout_ms);
 
 void rpc_register_method(const char *name,
                          rpc_param_parser_t parser,
