@@ -1,6 +1,5 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include <arpa/inet.h>
 #include "ccbpf.h" 
 
 struct ccbpf_program *ccbpf_load(const char *path)

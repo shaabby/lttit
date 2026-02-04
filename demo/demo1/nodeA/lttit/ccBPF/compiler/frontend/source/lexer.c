@@ -1,45 +1,60 @@
 #include "lexer.h"
+#include "heap.h"
+#include "inter.h"
 #include <ctype.h>
-#include <stdlib.h>
 #include <string.h>
-#include <stdio.h>
 
-static FILE *lexer_input = NULL;
+mg_region_handle frontend_region;
+mg_region_handle longterm_region;
+static const char *lexer_buf = NULL;
+static size_t lexer_len = 0;
+static size_t lexer_pos = 0;
 
-void lexer_set_input(const char *filename)
+void compiler_init(void)
 {
-    lexer_input = fopen(filename, "r");
-    if (!lexer_input) {
-        perror("Cannot open input file");
-        exit(1);
-    }
+    frontend_region = mg_region_create(16);
+    longterm_region = mg_region_create(16);
+    init_stmt_singletons();
+    init_constant_singletons();
+}
+
+void compiler_destroy(void)
+{
+    mg_region_destroy(frontend_region);
+    mg_region_destroy(longterm_region);
+}
+
+void lexer_set_input_buffer(const char *buf, size_t len)
+{
+    lexer_buf = buf;
+    lexer_len = len;
+    lexer_pos = 0;
 }
 
 char reader_next_char(void)
 {
-    if (!lexer_input)
+    if (!lexer_buf || lexer_pos >= lexer_len)
         return '\0';
 
-    int c = fgetc(lexer_input);
-    if (c == EOF)
-        return '\0';
-
-    return (char)c;
+    return lexer_buf[lexer_pos++];
 }
 
 static struct lexer_token *new_lexer_token_word(const char *lexeme, int tag)
 {
-    struct lexer_token *t = malloc(sizeof(struct lexer_token));
-    if (!t)
-        return NULL;
+    struct lexer_token *t = mg_region_alloc(frontend_region, sizeof(*t));
     t->tag = tag;
-    t->lexeme = strdup(lexeme);
+
+    size_t n = strlen(lexeme) + 1;
+    char *s = mg_region_alloc(frontend_region, n);
+    memcpy(s, lexeme, n);
+
+    t->lexeme = s;
     return t;
 }
 
 static struct lexer_token *new_lexer_token_num(int v)
 {
-    struct lexer_token *t = malloc(sizeof(struct lexer_token));
+    struct lexer_token *t = mg_region_alloc(frontend_region, sizeof(*t));
     if (!t)
         return NULL;
     t->tag = NUM;
@@ -47,19 +62,9 @@ static struct lexer_token *new_lexer_token_num(int v)
     return t;
 }
 
-static struct lexer_token *new_lexer_token_real(float v)
-{
-    struct lexer_token *t = malloc(sizeof(struct lexer_token));
-    if (!t)
-        return NULL;
-    t->tag = REAL;
-    t->real_val = v;
-    return t;
-}
-
 static struct lexer_token *new_lexer_token_char(int tag, char ch)
 {
-    struct lexer_token *t = malloc(sizeof(struct lexer_token));
+    struct lexer_token *t = mg_region_alloc(frontend_region, sizeof(*t));
     if (!t)
         return NULL;
     t->tag = tag;
@@ -86,16 +91,12 @@ void lexer_init(struct lexer *lex)
 
     lexer_reserve(lex, "if", IF);
     lexer_reserve(lex, "else", ELSE);
-    lexer_reserve(lex, "while", WHILE);
-    lexer_reserve(lex, "do", DO);
-    lexer_reserve(lex, "break", BREAK);
     lexer_reserve(lex, "true", TRUE);
     lexer_reserve(lex, "false", FALSE);
 
     lexer_reserve(lex, "int", BASIC);
     lexer_reserve(lex, "bool", BASIC);
     lexer_reserve(lex, "char", BASIC);
-    lexer_reserve(lex, "float", BASIC);
     lexer_reserve(lex, "short", BASIC);
     lexer_reserve(lex, "unsigned", BASIC);
     lexer_reserve(lex, "return", RETURN);
@@ -142,7 +143,7 @@ struct lexer_token *lexer_scan(struct lexer *lex)
 
             readch(lex);
 
-            struct lexer_token *t = malloc(sizeof(*t));
+            struct lexer_token *t = mg_region_alloc(frontend_region, sizeof(*t));
             t->tag = STRING;
             t->lexeme = strdup(buf);
             return t;
@@ -155,7 +156,7 @@ struct lexer_token *lexer_scan(struct lexer *lex)
         case '|':
             if (readch_match(lex, '|')) return new_lexer_token_char(OR, '|');
             return new_lexer_token_char(OR_BIT, '|');
-        
+
         case '=':
             if (readch_match(lex, '=')) return new_lexer_token_char(EQ, '=');
             return new_lexer_token_char(ASSIGN, '=');
@@ -202,7 +203,7 @@ struct lexer_token *lexer_scan(struct lexer *lex)
             return new_lexer_token_char(PLUS, '+');
 
         case '-':
-            readch(lex); 
+            readch(lex);
             if (lex->peek == '-') {
                 readch(lex);
                 return new_lexer_token_char(DEC, '-');
@@ -267,28 +268,15 @@ struct lexer_token *lexer_scan(struct lexer *lex)
             readch(lex);
         } while (isdigit((unsigned char)lex->peek));
 
-        if (lex->peek != '.')
-            return new_lexer_token_num(v);
-
-        float x = (float)v;
-        float d = 10.0f;
-
-        for (;;) {
-            readch(lex);
-            if (!isdigit((unsigned char)lex->peek)) break;
-            x += (float)(lex->peek - '0') / d;
-            d *= 10.0f;
-        }
-
-        return new_lexer_token_real(x);
+        return new_lexer_token_num(v);
     }
 
     if (isalpha((unsigned char)lex->peek) || lex->peek == '_') {
-        char buf[256];
+        char buf[64];
         int i = 0;
 
         do {
-            if (i < 255)
+            if (i < 64)
                 buf[i++] = lex->peek;
             readch(lex);
         } while (isalnum((unsigned char)lex->peek) || lex->peek == '_');

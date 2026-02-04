@@ -4,8 +4,6 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define HEAP_DEBUG 0
-
 struct heap_stats {
     size_t remain_size;
     size_t free_size_iter;

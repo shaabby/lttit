@@ -107,17 +107,17 @@
  * The instruction data structure.
  */
 struct bpf_insn {
-	u_short	code;
-	u_char 	jt;
-	u_char 	jf;
+	uint16_t	code;
+	uint8_t 	jt;
+	uint8_t 	jf;
 	long	k;
 };
 
 /*
  * Macros for insn array initializers.
  */
-#define BPF_STMT(code, k) { (u_short)(code), 0, 0, k }
-#define BPF_JUMP(code, k, jt, jf) { (u_short)(code), jt, jf, k }
+#define BPF_STMT(code, k) { (uint16_t)(code), 0, 0, k }
+#define BPF_JUMP(code, k, jt, jf) { (uint16_t)(code), jt, jf, k }
 
 /*
  * Number of scratch memory words (for BPF_LD|BPF_MEM and BPF_ST).
