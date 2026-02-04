@@ -4,10 +4,10 @@
 #include "math.h"
 
 #define MG_MAX_CLASS_BITS        16
-#define MG_MIN_CLASS_BYTES       32
+#define MG_MIN_CLASS_BYTES       4
 
-#define MG_POOL_BLOCKS_SMALL     32
-#define MG_POOL_BLOCKS_MEDIUM    16
+#define MG_POOL_BLOCKS_SMALL     8
+#define MG_POOL_BLOCKS_MEDIUM    2
 #define MG_POOL_BLOCKS_LARGE     1
 
 #define MG_BLOCK_THRESHOLD_SMALL 64

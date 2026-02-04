@@ -1,7 +1,7 @@
 #include "parser.h"
 #include "bpf_types.h"
 #include "inter.h"
-#include "heap.h"
+#include "mg_alloc.h"
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -20,10 +20,10 @@ static void compiler_debug(const char *fmt, ...)
 #endif
 }
 
-static char *heap_strdup(const char *s)
+static char *parser_strdup(const char *s)
 {
     size_t n = strlen(s) + 1;
-    char *p = heap_malloc(n);
+    char *p = mg_region_alloc(longterm_region, n);
     memcpy(p, s, n);
     return p;
 }
@@ -47,50 +47,50 @@ static struct Type *basic_type_from_token(struct lexer_token *tok)
 
 char *token_to_string(struct lexer_token *tok)
 {
-    if (!tok) return heap_strdup("<?>");
-    if (tok->lexeme) return heap_strdup(tok->lexeme);
+    if (!tok) return parser_strdup("<?>");
+    if (tok->lexeme) return parser_strdup(tok->lexeme);
 
     if (tok->tag == NUM) {
-        char *buf = heap_malloc(32);
+        char *buf = mg_region_alloc(longterm_region, 32);
         snprintf(buf, 32, "%d", tok->int_val);
         return buf;
     }
 
     switch (tok->tag) {
-        case AND_BIT:    return heap_strdup("&");
-        case OR_BIT:     return heap_strdup("|");
-        case LT:         return heap_strdup("<");
-        case GT:         return heap_strdup(">");
-        case PLUS:       return heap_strdup("+");
-        case MINUS:      return heap_strdup("-");
-        case STAR:       return heap_strdup("*");
-        case SLASH:      return heap_strdup("/");
-        case MOD:        return heap_strdup("%");
-        case ASSIGN:     return heap_strdup("=");
-        case ADD_ASSIGN: return heap_strdup("+=");
-        case SUB_ASSIGN: return heap_strdup("-=");
-        case MUL_ASSIGN: return heap_strdup("*=");
-        case DIV_ASSIGN: return heap_strdup("/=");
-        case ARROW:      return heap_strdup("->");
-        case INC:        return heap_strdup("++");
-        case DEC:        return heap_strdup("--");
-        case EQ:         return heap_strdup("==");
-        case NE:         return heap_strdup("!=");
-        case LE:         return heap_strdup("<=");
-        case GE:         return heap_strdup(">=");
-        case AND:        return heap_strdup("&&");
-        case OR:         return heap_strdup("||");
-        case LPAREN:     return heap_strdup("(");
-        case RPAREN:     return heap_strdup(")");
-        case LBRACE:     return heap_strdup("{");
-        case RBRACE:     return heap_strdup("}");
-        case LBRACKET:   return heap_strdup("[");
-        case RBRACKET:   return heap_strdup("]");
-        case COMMA:      return heap_strdup(",");
-        case SEMICOLON:  return heap_strdup(";");
-        case DOT:        return heap_strdup(".");
+        case AND_BIT:    return parser_strdup("&");
+        case OR_BIT:     return parser_strdup("|");
+        case LT:         return parser_strdup("<");
+        case GT:         return parser_strdup(">");
+        case PLUS:       return parser_strdup("+");
+        case MINUS:      return parser_strdup("-");
+        case STAR:       return parser_strdup("*");
+        case SLASH:      return parser_strdup("/");
+        case MOD:        return parser_strdup("%");
+        case ASSIGN:     return parser_strdup("=");
+        case ADD_ASSIGN: return parser_strdup("+=");
+        case SUB_ASSIGN: return parser_strdup("-=");
+        case MUL_ASSIGN: return parser_strdup("*=");
+        case DIV_ASSIGN: return parser_strdup("/=");
+        case ARROW:      return parser_strdup("->");
+        case INC:        return parser_strdup("++");
+        case DEC:        return parser_strdup("--");
+        case EQ:         return parser_strdup("==");
+        case NE:         return parser_strdup("!=");
+        case LE:         return parser_strdup("<=");
+        case GE:         return parser_strdup(">=");
+        case AND:        return parser_strdup("&&");
+        case OR:         return parser_strdup("||");
+        case LPAREN:     return parser_strdup("(");
+        case RPAREN:     return parser_strdup(")");
+        case LBRACE:     return parser_strdup("{");
+        case RBRACE:     return parser_strdup("}");
+        case LBRACKET:   return parser_strdup("[");
+        case RBRACKET:   return parser_strdup("]");
+        case COMMA:      return parser_strdup(",");
+        case SEMICOLON:  return parser_strdup(";");
+        case DOT:        return parser_strdup(".");
         default: {
-            char *buf = heap_malloc(16);
+            char *buf = mg_region_alloc(longterm_region, 16);
             snprintf(buf, 16, "#%d", tok->tag);
             return buf;
         }
@@ -104,7 +104,6 @@ static void parser_move(struct Parser *p)
     if (p->look) {
         char *s = token_to_string(p->look);
         compiler_debug("TOKEN: tag=%d, str=%s\n", p->look->tag, s);
-        heap_free(s);
     }
 #endif
 }
@@ -125,7 +124,7 @@ static void parser_match(struct Parser *p, int tag)
 
 struct Parser *parser_new(struct lexer *lex)
 {
-    struct Parser *p = heap_malloc(sizeof(struct Parser));
+    struct Parser *p = mg_region_alloc(longterm_region, sizeof(struct Parser));
     p->lex  = lex;
     p->top  = env_new(NULL);
     p->used = 0;
@@ -140,7 +139,7 @@ static void parser_struct_decl(struct Parser *p)
     if (p->look->tag != ID || !p->look->lexeme)
         parser_error(p, "expected struct name");
 
-    char *name = heap_strdup(p->look->lexeme);
+    char *name = parser_strdup(p->look->lexeme);
     parser_match(p, ID);
 
     struct StructType *st = struct_new();
@@ -154,11 +153,12 @@ static void parser_struct_decl(struct Parser *p)
         if (p->look->tag != ID || !p->look->lexeme)
             parser_error(p, "expected field name");
 
-        char *fname = heap_strdup(p->look->lexeme);
+        char *fname = parser_strdup(p->look->lexeme);
         parser_match(p, ID);
         parser_match(p, SEMICOLON);
 
-        struct StructFieldInfo *fi = heap_malloc(sizeof(*fi));
+        struct StructFieldInfo *fi =
+                mg_region_alloc(longterm_region, sizeof(*fi));
         fi->offset = offset;
         fi->type   = ft;
 
@@ -256,7 +256,7 @@ static void parser_block_gen(struct Parser *p, int begin, int after)
             s->base.gen((struct Node *)s, begin, after);
         }
 
-        // 将来这里可以换成 mg_reset(&frontend_arena);
+        mg_region_reset(frontend_region);
     }
 
     parser_match(p, RBRACE);
@@ -297,7 +297,6 @@ static void parse_hook_function_gen(struct Parser *p, int begin, int after)
         p->used += param_type->width;
     }
 
-    // 这里不再调用 parser_block 返回一棵树，而是直接解析并生成 hook 的 block
     parser_block_gen(p, begin, after);
 }
 
@@ -305,7 +304,7 @@ void parser_program(struct Parser *p)
 {
     while (p->look->tag == STRUCT) {
         parser_struct_decl(p);
-        // 将来这里可以考虑 reset 一次前端/词法的 arena
+        mg_region_reset(frontend_region);
     }
 
     int begin = node_newlabel();
@@ -352,7 +351,7 @@ void parser_decls(struct Parser *p)
             if (p->look->tag != ID || !p->look->lexeme)
                 parser_error(p, "expected struct name");
 
-            char *sname = heap_strdup(p->look->lexeme);
+            char *sname = parser_strdup(p->look->lexeme);
             parser_match(p, ID);
 
             struct Type *st = env_get_type(p->top, sname);
@@ -686,7 +685,6 @@ struct Expr *parser_postfix(struct Parser *p)
     struct Expr *e = parser_factor(p);
 
     for (;;) {
-
         if (p->look->tag == LBRACKET) {
             if (e->base.tag != TAG_ID)
                 parser_error(p, "subscript requires identifier");

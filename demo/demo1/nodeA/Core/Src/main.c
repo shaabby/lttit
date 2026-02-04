@@ -323,6 +323,7 @@ int main(void)
             "    return x + y;"
             "}";
 
+    compiler_init();
     lexer_set_input_buffer(src, strlen(src));
 
     struct lexer lex;

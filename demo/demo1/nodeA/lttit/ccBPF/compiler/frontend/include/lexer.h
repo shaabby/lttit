@@ -7,6 +7,9 @@
 extern mg_region_handle frontend_region;
 extern mg_region_handle longterm_region;
 
+void compiler_init(void);
+void compiler_destroy(void);
+
 enum tag {
     AND = 256,     // &&
     BASIC,         // int, short, bool, char

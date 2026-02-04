@@ -5,7 +5,7 @@
 
 struct Type *type_new(enum type_tag tag, int width)
 {
-    struct Type *t = mg_region_alloc(frontend_region, sizeof(struct Type));
+    struct Type *t = mg_region_alloc(longterm_region, sizeof(struct Type));
     t->tag = tag;
     t->width = width;
     return t;
@@ -13,7 +13,7 @@ struct Type *type_new(enum type_tag tag, int width)
 
 struct Array *array_new(struct Type *of, int size)
 {
-    struct Array *a = mg_region_alloc(frontend_region,sizeof(struct Array));
+    struct Array *a = mg_region_alloc(longterm_region,sizeof(struct Array));
     a->base.tag = TYPE_ARRAY;
     a->base.width = of->width * size;
     a->of = of;
@@ -23,7 +23,7 @@ struct Array *array_new(struct Type *of, int size)
 
 struct FuncType *func_new(struct Type *ret, struct Type **params, int count)
 {
-    struct FuncType *f = mg_region_alloc(frontend_region,sizeof(struct FuncType));
+    struct FuncType *f = mg_region_alloc(longterm_region,sizeof(struct FuncType));
     f->base.tag = TYPE_FUNC;
     f->base.width = 0;
     f->ret = ret;
@@ -34,7 +34,7 @@ struct FuncType *func_new(struct Type *ret, struct Type **params, int count)
 
 struct PtrType *ptr_new(struct Type *to)
 {
-    struct PtrType *p = mg_region_alloc(frontend_region,sizeof(struct PtrType));
+    struct PtrType *p = mg_region_alloc(longterm_region,sizeof(struct PtrType));
     p->base.tag = TYPE_PTR;
     p->base.width = sizeof(void *);
     p->to = to;
@@ -43,7 +43,7 @@ struct PtrType *ptr_new(struct Type *to)
 
 struct StructType *struct_new(void)
 {
-    struct StructType *s = mg_region_alloc(frontend_region,sizeof(struct StructType));
+    struct StructType *s = mg_region_alloc(longterm_region,sizeof(struct StructType));
     s->base.tag = TYPE_STRUCT;
     s->base.width = 0;
     hashmap_init(&s->fields, 32, HASHMAP_KEY_STRING);
@@ -52,7 +52,7 @@ struct StructType *struct_new(void)
 
 struct EnumType *enum_new(void)
 {
-    struct EnumType *e = mg_region_alloc(frontend_region,sizeof(struct EnumType));
+    struct EnumType *e = mg_region_alloc(longterm_region,sizeof(struct EnumType));
     e->base.tag = TYPE_ENUM;
     e->base.width = sizeof(int);
     hashmap_init(&e->values, 32, HASHMAP_KEY_STRING);
@@ -61,7 +61,7 @@ struct EnumType *enum_new(void)
 
 struct Env *env_new(struct Env *prev)
 {
-    struct Env *env = mg_region_alloc(frontend_region,sizeof(struct Env));
+    struct Env *env = mg_region_alloc(longterm_region,sizeof(struct Env));
     hashmap_init(&env->vars, 64, HASHMAP_KEY_STRING);
     hashmap_init(&env->types, 32, HASHMAP_KEY_STRING);
     env->prev = prev;

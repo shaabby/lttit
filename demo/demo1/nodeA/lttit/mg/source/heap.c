@@ -3,7 +3,7 @@
 #include <stdio.h>
 
 #define PTR_SIZE        uint32_t
-#define CONFIG_HEAP     (15 * 1024)
+#define CONFIG_HEAP     (14 * 1024)
 #define ALIGNMENT_BYTE  0x07
 
 #define MIN_SIZE ((size_t)(heap_struct_size << 1))
@@ -268,12 +268,12 @@ void heap_free(void *ptr)
 
 void *heap_malloc(size_t size)
 {
-return real_heap_malloc(size);
+    return real_heap_malloc(size);
 }
 
 void heap_free(void *ptr)
 {
-real_heap_free(ptr);
+    real_heap_free(ptr);
 }
 
 void heap_debug_dump_leaks(void)
