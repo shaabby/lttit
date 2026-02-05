@@ -351,6 +351,10 @@ int main(void)
     struct Parser *p = parser_new(&lex);
 
     parser_program(p);
+
+    cmd_mem();
+    heap_debug_dump_leaks();
+
     frontend_destroy(&lex);
 
     cmd_mem();

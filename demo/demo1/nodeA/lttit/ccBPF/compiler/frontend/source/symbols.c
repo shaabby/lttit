@@ -3,7 +3,13 @@
 #include "heap.h"
 #include "lexer.h"
 
-static struct hashmap *all_hashmaps[64];
+#define ALL_MAP_SIZE 64
+#define STRUCT_MAP_SIZE 32
+#define ENUM_MAP_SIZE 32
+#define ENV_VAR_MAP_SIZE 64
+#define ENV_TYPE_MAP_SIZE 32
+
+static struct hashmap *all_hashmaps[ALL_MAP_SIZE];
 static int hashmap_count = 0;
 
 static void track_hashmap(struct hashmap *h) {
@@ -61,7 +67,7 @@ struct StructType *struct_new(void)
     struct StructType *s = mg_region_alloc(longterm_region,sizeof(struct StructType));
     s->base.tag = TYPE_STRUCT;
     s->base.width = 0;
-    hashmap_init(&s->fields, 32, HASHMAP_KEY_STRING);
+    hashmap_init(&s->fields, STRUCT_MAP_SIZE, HASHMAP_KEY_STRING);
     track_hashmap(&s->fields);
     return s;
 }
@@ -71,7 +77,7 @@ struct EnumType *enum_new(void)
     struct EnumType *e = mg_region_alloc(longterm_region,sizeof(struct EnumType));
     e->base.tag = TYPE_ENUM;
     e->base.width = sizeof(int);
-    hashmap_init(&e->values, 32, HASHMAP_KEY_STRING);
+    hashmap_init(&e->values, ENUM_MAP_SIZE, HASHMAP_KEY_STRING);
     track_hashmap(&e->values);
     return e;
 }
@@ -79,9 +85,9 @@ struct EnumType *enum_new(void)
 struct Env *env_new(struct Env *prev)
 {
     struct Env *env = mg_region_alloc(longterm_region,sizeof(struct Env));
-    hashmap_init(&env->vars, 64, HASHMAP_KEY_STRING);
+    hashmap_init(&env->vars, ENV_VAR_MAP_SIZE, HASHMAP_KEY_STRING);
     track_hashmap(&env->vars);
-    hashmap_init(&env->types, 32, HASHMAP_KEY_STRING);
+    hashmap_init(&env->types, ENV_TYPE_MAP_SIZE, HASHMAP_KEY_STRING);
     track_hashmap(&env->types);
     env->prev = prev;
     env->level = prev ? prev->level + 1 : 0;
@@ -125,7 +131,7 @@ int type_equal(struct Type *a, struct Type *b)
 
     switch (a->tag) {
         case TYPE_INT:
-        case TYPE_FLOAT:
+        case TYPE_SHORT:
         case TYPE_CHAR:
         case TYPE_BOOL:
             return 1;

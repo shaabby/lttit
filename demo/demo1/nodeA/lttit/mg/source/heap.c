@@ -1,6 +1,7 @@
 #include "heap.h"
 #include <stdio.h>
 #include <stdint.h>
+#include <string.h>
 
 #define PTR_SIZE        uint32_t
 #define CONFIG_HEAP     (10 * 1024)
@@ -31,7 +32,7 @@ static const size_t heap_struct_size =
 
 static void insert_free_block(struct heap_node *node);
 
-#ifdef HEAP_DEBUG
+#if HEAP_TRACKING
 
 #define HEAP_TRACK_MAX 128
 
@@ -92,6 +93,12 @@ void heap_debug_dump_leaks(void)
     printf("====================================\n");
 }
 
+#else
+
+#define heap_track_alloc(ptr,size,file,line)
+#define heap_track_free(ptr)
+void heap_debug_dump_leaks(void) {}
+
 #endif
 
 void heap_init(void)
@@ -117,12 +124,12 @@ void heap_init(void)
         the_heap.all_size = (size_t)(end - start);
     }
 
-    the_heap.tail            = (struct heap_node *)end;
+    the_heap.tail             = (struct heap_node *)end;
     the_heap.tail->block_size = 0;
     the_heap.tail->next       = NULL;
 
-    first            = (struct heap_node *)start;
-    first->next      = the_heap.tail;
+    first             = (struct heap_node *)start;
+    first->next       = the_heap.tail;
     first->block_size = the_heap.all_size;
 }
 
@@ -157,7 +164,7 @@ static void *real_heap_malloc(size_t size)
     prev->next = use->next;
 
     if ((use->block_size - size) > MIN_SIZE) {
-        new            = (struct heap_node *)(((uint8_t *)use) + size);
+        new             = (struct heap_node *)(((uint8_t *)use) + size);
         new->block_size = use->block_size - size;
         use->block_size = size;
         new->next       = prev->next;
@@ -172,14 +179,11 @@ static void *real_heap_malloc(size_t size)
 
 static void real_heap_free(void *ptr)
 {
-    struct heap_node *node;
-    uint8_t *raw;
-
     if (!ptr)
         return;
 
-    raw  = (uint8_t *)ptr - heap_struct_size;
-    node = (struct heap_node *)raw;
+    uint8_t *raw = (uint8_t *)ptr - heap_struct_size;
+    struct heap_node *node = (struct heap_node *)raw;
 
     the_heap.all_size += node->block_size;
 
@@ -238,8 +242,6 @@ struct heap_stats heap_get_stats(void)
     return st;
 }
 
-
-#ifdef HEAP_DEBUG
 void *heap_malloc_dbg(size_t size, const char *file, int line)
 {
     void *ret = real_heap_malloc(size);
@@ -252,23 +254,3 @@ void heap_free_dbg(void *ptr, const char *file, int line)
     heap_track_free(ptr);
     real_heap_free(ptr);
 }
-
-#else
-
-void *heap_malloc(size_t size)
-{
-    return real_heap_malloc(size);
-}
-
-void heap_free(void *ptr)
-{
-    real_heap_free(ptr);
-}
-
-void heap_debug_dump_leaks(void)
-{
-
-}
-
-#endif
-
