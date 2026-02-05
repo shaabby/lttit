@@ -3,7 +3,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 
-#define IR_POOL_SIZE 10
+#define IR_POOL_SIZE 28
 
 static struct IR ir_pool[IR_POOL_SIZE];
 int ir_count = 0;
@@ -31,7 +31,7 @@ void ir_mes_get(struct ir_mes *im)
 }
 
 void ir_emit(struct IR ir)
-{/*
+{
     if (ir_count >= IR_POOL_SIZE) {
         fprintf(stderr, "IR pool overflow\n");
         exit(1);
@@ -111,5 +111,5 @@ void ir_emit(struct IR ir)
         printf("[IR] ???\n");
         break;
     }
-    */
+
 }

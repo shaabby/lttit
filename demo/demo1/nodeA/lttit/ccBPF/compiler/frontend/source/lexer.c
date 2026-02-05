@@ -12,8 +12,8 @@ static size_t lexer_pos = 0;
 
 void compiler_init(void)
 {
-    frontend_region = mg_region_create(16);
-    longterm_region = mg_region_create(16);
+    frontend_region = mg_region_create_pool(16);
+    longterm_region = mg_region_create_bump(10*1024);
     init_stmt_singletons();
     init_constant_singletons();
 }
@@ -41,11 +41,11 @@ char reader_next_char(void)
 
 static struct lexer_token *new_lexer_token_word(const char *lexeme, int tag)
 {
-    struct lexer_token *t = mg_region_alloc(frontend_region, sizeof(*t));
+    struct lexer_token *t = mg_region_alloc(longterm_region, sizeof(*t));
     t->tag = tag;
 
     size_t n = strlen(lexeme) + 1;
-    char *s = mg_region_alloc(frontend_region, n);
+    char *s = mg_region_alloc(longterm_region, n);
     memcpy(s, lexeme, n);
 
     t->lexeme = s;
@@ -54,7 +54,7 @@ static struct lexer_token *new_lexer_token_word(const char *lexeme, int tag)
 
 static struct lexer_token *new_lexer_token_num(int v)
 {
-    struct lexer_token *t = mg_region_alloc(frontend_region, sizeof(*t));
+    struct lexer_token *t = mg_region_alloc(longterm_region, sizeof(*t));
     if (!t)
         return NULL;
     t->tag = NUM;
@@ -64,7 +64,7 @@ static struct lexer_token *new_lexer_token_num(int v)
 
 static struct lexer_token *new_lexer_token_char(int tag, char ch)
 {
-    struct lexer_token *t = mg_region_alloc(frontend_region, sizeof(*t));
+    struct lexer_token *t = mg_region_alloc(longterm_region, sizeof(*t));
     if (!t)
         return NULL;
     t->tag = tag;

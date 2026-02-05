@@ -6,7 +6,7 @@
 #include <stdio.h>
 #include <string.h>
 
-#define COMPILER_DEBUG_ENABLED 0
+#define COMPILER_DEBUG_ENABLED 1
 
 static void compiler_debug(const char *fmt, ...)
 {
@@ -256,7 +256,9 @@ static void parser_block_gen(struct Parser *p, int begin, int after)
             s->base.gen((struct Node *)s, begin, after);
         }
 
-        mg_region_reset(frontend_region);
+        //mg_region_reset(frontend_region);
+        //mg_region_destroy(frontend_region);
+        //frontend_region = mg_region_create_pool(16);
     }
 
     parser_match(p, RBRACE);
@@ -304,7 +306,9 @@ void parser_program(struct Parser *p)
 {
     while (p->look->tag == STRUCT) {
         parser_struct_decl(p);
-        mg_region_reset(frontend_region);
+        //mg_region_reset(frontend_region);
+        //mg_region_destroy(frontend_region);
+        //frontend_region = mg_region_create(16);
     }
 
     int begin = node_newlabel();

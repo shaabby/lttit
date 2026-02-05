@@ -56,6 +56,7 @@ void SystemClock_Config(void);
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 #include "stm32f1xx_hal.h"
+/*
 #include "schedule.h"
 #include "sem.h"
 #include "ccnet.h"
@@ -67,6 +68,7 @@ void SystemClock_Config(void);
 #include "timer.h"
 #include "rpc.h"
 #include "rpc_gen.h"
+ */
 #include "lexer.h"
 #include "parser.h"
 #include <stdio.h>
@@ -285,6 +287,7 @@ int main(void)
 }
 */int main(void)
 {
+
     const char *src =
             "struct udp_hdr {"
             "    unsigned short sport;"
@@ -297,31 +300,23 @@ int main(void)
             "    unsigned int key;"
             "    unsigned int val;"
             "    struct udp_hdr *uh;"
-            ""
             "    uh = (struct udp_hdr *)&ctx[0];"
             "    x = ntohs(uh->sport);"
-            "    print(x);"
             "    y = ntohs(uh->dport);"
-            "    print(y);"
-            ""
             "    key = x;"
             "    val = y;"
-            ""
             "    map_update(0, key, val);"
-            ""
             "    val = map_lookup(0, key);"
-            "    print(val);"
-            ""
-            "    print(map_lookup(0, 9999));"
-            "    map_update(0, 1, 11);"
-            "    map_update(0, 2, 22);"
-            "    map_update(0, 3, 33);"
-            "    print(map_lookup(0, 1));"
-            "    print(map_lookup(0, 2));"
-            "    print(map_lookup(0, 3));"
-            ""
-            "    return x + y;"
+            "    return 0;"
             "}";
+
+    HAL_Init();
+    SystemClock_Config();
+
+    MX_GPIO_Init();
+    MX_USART1_UART_Init();
+
+    int s = heap_malloc(50);
 
     compiler_init();
     lexer_set_input_buffer(src, strlen(src));
@@ -334,6 +329,9 @@ int main(void)
     parser_program(p);
 
     int a = heap_malloc(50);
+
+    mg_region_print_pools(frontend_region);
+    mg_region_print_pools(longterm_region);
 
     return 0;
 }

@@ -1,7 +1,15 @@
+#include <memory.h>
 #include "symbols.h"
 #include "heap.h"
 #include "lexer.h"
 
+static char *sym_strdup(const char *s)
+{
+    size_t n = strlen(s) + 1;
+    char *p = mg_region_alloc(longterm_region, n);
+    memcpy(p, s, n);
+    return p;
+}
 
 struct Type *type_new(enum type_tag tag, int width)
 {
@@ -71,12 +79,14 @@ struct Env *env_new(struct Env *prev)
 
 void env_put_var(struct Env *env, const char *name, struct Id *id)
 {
-    hashmap_put(&env->vars, (void *)name, id);
+    char *k = sym_strdup(name);
+    hashmap_put(&env->vars, k, id);
 }
 
 void env_put_type(struct Env *env, const char *name, struct Type *type)
 {
-    hashmap_put(&env->types, (void *)name, type);
+    char *k = sym_strdup(name);
+    hashmap_put(&env->types, k, type);
 }
 
 struct Id *env_get_var(struct Env *env, const char *name)

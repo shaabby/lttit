@@ -8,7 +8,7 @@
 #include <string.h>
 #include <stdarg.h>
 
-#define COMPILER_DEBUG_ENABLED 0
+#define COMPILER_DEBUG_ENABLED 1
 
 static void compiler_debug(const char *fmt, ...)
 {
@@ -41,7 +41,7 @@ int new_temp(void)
 static char *region_strdup(const char *s)
 {
     size_t n = strlen(s) + 1;
-    char *p = mg_region_alloc(frontend_region, n);
+    char *p = mg_region_alloc(longterm_region, n);
     memcpy(p, s, n);
     return p;
 }
@@ -62,7 +62,7 @@ static int g_labels = 0;
 
 struct Node *node_new(void)
 {
-    struct Node *n = mg_region_alloc(frontend_region,sizeof(struct Node));
+    struct Node *n = mg_region_alloc(longterm_region,sizeof(struct Node));
     n->lexline  = 0;
     n->gen      = NULL;
     n->jumping  = NULL;
@@ -128,7 +128,7 @@ static char        *expr_tostring(struct Node *self);
 
 struct Expr *expr_new(struct lexer_token *tok, struct Type *type)
 {
-    struct Expr *e = mg_region_alloc(frontend_region,sizeof(struct Expr));
+    struct Expr *e = mg_region_alloc(longterm_region,sizeof(struct Expr));
     e->op   = tok;
     e->type = type;
 
@@ -317,14 +317,14 @@ static char *ctxexpr_tostring(struct Node *self)
 {
     struct CtxExpr *c = (struct CtxExpr *)self;
 
-    char *buf = mg_region_alloc(frontend_region,32);
+    char *buf = mg_region_alloc(longterm_region,32);
     snprintf(buf, 32, "ctx[%d]", c->offset);
     return buf;
 }
 
 struct Expr *ctx_load_expr_new(int offset)
 {
-    struct CtxExpr *c = mg_region_alloc(frontend_region,sizeof(struct CtxExpr));
+    struct CtxExpr *c = mg_region_alloc(longterm_region,sizeof(struct CtxExpr));
 
     c->base.base.tag = TAG_CTX;
     c->base.op       = NULL;
@@ -358,7 +358,7 @@ static void return_gen(struct Node *self, int b, int a)
 
 struct Return *return_new(struct Expr *expr)
 {
-    struct Return *r = mg_region_alloc(frontend_region,sizeof(struct Return));
+    struct Return *r = mg_region_alloc(longterm_region,sizeof(struct Return));
     r->expr = expr;
 
     r->base.base.tag = TAG_RETURN;
@@ -381,7 +381,7 @@ static char *builtin_tostring(struct Node *self)
 
 struct BuiltinCall *builtin_call_new(int func_id, int argc, struct Expr **args)
 {
-    struct BuiltinCall *b = mg_region_alloc(frontend_region,sizeof(*b));
+    struct BuiltinCall *b = mg_region_alloc(longterm_region,sizeof(*b));
     b->base.base.tag      = TAG_BUILTIN_CALL;
     b->base.base.gen      = (void *)expr_gen;
     b->base.base.jumping  = expr_jumping;
@@ -389,7 +389,7 @@ struct BuiltinCall *builtin_call_new(int func_id, int argc, struct Expr **args)
 
     b->base.temp_no = 0;
 
-    struct lexer_token *tok = mg_region_alloc(frontend_region,sizeof(*tok));
+    struct lexer_token *tok = mg_region_alloc(longterm_region,sizeof(*tok));
     tok->tag = ID;
 
     switch (func_id) {
@@ -440,7 +440,7 @@ struct Stmt *Stmt_Enclosing = NULL;
 
 struct Stmt *stmt_new(void)
 {
-    struct Stmt *s = mg_region_alloc(frontend_region,sizeof(struct Stmt));
+    struct Stmt *s = mg_region_alloc(longterm_region,sizeof(struct Stmt));
     s->after = 0;
     s->base.gen      = NULL;
     s->base.jumping  = NULL;
@@ -458,14 +458,14 @@ void init_stmt_singletons(void)
 static char *ctx_ptr_tostring(struct Node *self)
 {
     struct CtxPtrExpr *p = (struct CtxPtrExpr *)self;
-    char *buf = mg_region_alloc(frontend_region,32);
+    char *buf = mg_region_alloc(longterm_region,32);
     snprintf(buf, 32, "&ctx[%d]", p->base_offset);
     return buf;
 }
 
 struct CtxPtrExpr *ctx_ptr_new(int base_offset, struct Type *ty)
 {
-    struct CtxPtrExpr *p = mg_region_alloc(frontend_region,sizeof(*p));
+    struct CtxPtrExpr *p = mg_region_alloc(longterm_region,sizeof(*p));
 
     p->base.base.tag      = TAG_CTX_PTR;
     p->base.base.gen      = (void *)expr_gen;
@@ -490,7 +490,7 @@ static void  constant_jumping(struct Node *self, int t, int f);
 
 struct Constant *constant_new(struct lexer_token *tok, struct Type *type)
 {
-    struct Constant *c = mg_region_alloc(frontend_region,sizeof(struct Constant));
+    struct Constant *c = mg_region_alloc(longterm_region,sizeof(struct Constant));
 
     c->base.op   = tok;
     c->base.type = type;
@@ -509,7 +509,7 @@ struct Constant *constant_new(struct lexer_token *tok, struct Type *type)
 
 struct Constant *constant_int(int value)
 {
-    struct lexer_token *tok = mg_region_alloc(frontend_region,sizeof(struct lexer_token));
+    struct lexer_token *tok = mg_region_alloc(longterm_region,sizeof(struct lexer_token));
     tok->tag     = NUM;
     tok->int_val = value;
     tok->lexeme  = NULL;
@@ -565,7 +565,7 @@ static char *op_tostring(struct Node *self);
 
 struct Op *op_new(struct lexer_token *tok, struct Type *type)
 {
-    struct Op *o = mg_region_alloc(frontend_region,sizeof(struct Op));
+    struct Op *o = mg_region_alloc(longterm_region,sizeof(struct Op));
     o->base.op   = tok;
     o->base.type = type;
 
@@ -586,7 +586,7 @@ static char *arith_tostring(struct Node *self);
 
 struct Arith *arith_new(struct lexer_token *tok, struct Expr *e1, struct Expr *e2)
 {
-    struct Arith *a = mg_region_alloc(frontend_region,sizeof(struct Arith));
+    struct Arith *a = mg_region_alloc(longterm_region,sizeof(struct Arith));
 
     a->base.base.op   = tok;
     a->base.base.type = type_max(e1->type, e2->type);
@@ -615,16 +615,28 @@ static char *arith_tostring(struct Node *self)
     char *op = token_to_string(a->base.base.op);
 
     size_t len = strlen(s1) + strlen(op) + strlen(s2) + 10;
-    char *buf = mg_region_alloc(frontend_region,len);
+    char *buf = mg_region_alloc(longterm_region,len);
     snprintf(buf, len, "%s %s %s", s1, op, s2);
     return buf;
 }
 
-static char *bitand_tostring(struct Node *self);
+static char *bitand_tostring(struct Node *self)
+{
+    struct BitAnd *b = (struct BitAnd *)self;
+
+    char *s1 = b->e1->base.tostring((struct Node *)b->e1);
+    char *s2 = b->e2->base.tostring((struct Node *)b->e2);
+    char *op = token_to_string(b->base.base.op);
+
+    size_t len = strlen(s1) + strlen(op) + strlen(s2) + 10;
+    char *buf = mg_region_alloc(longterm_region,len);
+    snprintf(buf, len, "%s %s %s", s1, op, s2);
+    return buf;
+}
 
 struct BitAnd *bitand_new(struct lexer_token *tok, struct Expr *e1, struct Expr *e2)
 {
-    struct BitAnd *b = mg_region_alloc(frontend_region,sizeof(struct BitAnd));
+    struct BitAnd *b = mg_region_alloc(longterm_region,sizeof(struct BitAnd));
 
     b->base.base.op   = tok;
     b->base.base.type = type_max(e1->type, e2->type);
@@ -642,25 +654,23 @@ struct BitAnd *bitand_new(struct lexer_token *tok, struct Expr *e1, struct Expr 
     return b;
 }
 
-static char *bitand_tostring(struct Node *self)
+static char *bitor_tostring(struct Node *self)
 {
-    struct BitAnd *b = (struct BitAnd *)self;
+    struct BitOr *b = (struct BitOr *)self;
 
     char *s1 = b->e1->base.tostring((struct Node *)b->e1);
     char *s2 = b->e2->base.tostring((struct Node *)b->e2);
     char *op = token_to_string(b->base.base.op);
 
     size_t len = strlen(s1) + strlen(op) + strlen(s2) + 10;
-    char *buf = mg_region_alloc(frontend_region,len);
+    char *buf = mg_region_alloc(longterm_region,len);
     snprintf(buf, len, "%s %s %s", s1, op, s2);
     return buf;
 }
 
-static char *bitor_tostring(struct Node *self);
-
 struct BitOr *bitor_new(struct lexer_token *tok, struct Expr *e1, struct Expr *e2)
 {
-    struct BitOr *b = mg_region_alloc(frontend_region,sizeof(struct BitOr));
+    struct BitOr *b = mg_region_alloc(longterm_region,sizeof(struct BitOr));
 
     b->base.base.op   = tok;
     b->base.base.type = type_max(e1->type, e2->type);
@@ -678,25 +688,23 @@ struct BitOr *bitor_new(struct lexer_token *tok, struct Expr *e1, struct Expr *e
     return b;
 }
 
-static char *bitor_tostring(struct Node *self)
+static char *logical_tostring(struct Node *self)
 {
-    struct BitOr *b = (struct BitOr *)self;
+    struct Logical *l = (struct Logical *)self;
 
-    char *s1 = b->e1->base.tostring((struct Node *)b->e1);
-    char *s2 = b->e2->base.tostring((struct Node *)b->e2);
-    char *op = token_to_string(b->base.base.op);
+    char *s1 = l->e1->base.tostring((struct Node *)l->e1);
+    char *s2 = l->e2->base.tostring((struct Node *)l->e2);
+    char *op = token_to_string(l->base.op);
 
     size_t len = strlen(s1) + strlen(op) + strlen(s2) + 10;
-    char *buf = mg_region_alloc(frontend_region,len);
+    char *buf = mg_region_alloc(longterm_region,len);
     snprintf(buf, len, "%s %s %s", s1, op, s2);
     return buf;
 }
 
-static char *logical_tostring(struct Node *self);
-
 struct Logical *logical_new(struct lexer_token *tok, struct Expr *e1, struct Expr *e2)
 {
-    struct Logical *l = mg_region_alloc(frontend_region,sizeof(struct Logical));
+    struct Logical *l = mg_region_alloc(longterm_region,sizeof(struct Logical));
 
     l->base.op   = tok;
     l->base.type = Type_Bool;
@@ -713,25 +721,11 @@ struct Logical *logical_new(struct lexer_token *tok, struct Expr *e1, struct Exp
     return l;
 }
 
-static char *logical_tostring(struct Node *self)
-{
-    struct Logical *l = (struct Logical *)self;
-
-    char *s1 = l->e1->base.tostring((struct Node *)l->e1);
-    char *s2 = l->e2->base.tostring((struct Node *)l->e2);
-    char *op = token_to_string(l->base.op);
-
-    size_t len = strlen(s1) + strlen(op) + strlen(s2) + 10;
-    char *buf = mg_region_alloc(frontend_region,len);
-    snprintf(buf, len, "%s %s %s", s1, op, s2);
-    return buf;
-}
-
 static void and_jumping(struct Node *self, int t, int f);
 
 struct And *and_new(struct lexer_token *tok, struct Expr *e1, struct Expr *e2)
 {
-    struct And *a = mg_region_alloc(frontend_region,sizeof(struct And));
+    struct And *a = mg_region_alloc(longterm_region,sizeof(struct And));
 
     a->base.base.op   = tok;
     a->base.base.type = Type_Bool;
@@ -764,7 +758,7 @@ static void or_jumping(struct Node *self, int t, int f);
 
 struct Or *or_new(struct lexer_token *tok, struct Expr *e1, struct Expr *e2)
 {
-    struct Or *o = mg_region_alloc(frontend_region,sizeof(struct Or));
+    struct Or *o = mg_region_alloc(longterm_region,sizeof(struct Or));
 
     o->base.base.op   = tok;
     o->base.base.type = Type_Bool;
@@ -798,7 +792,7 @@ static char *not_tostring(struct Node *self);
 
 struct Not *not_new(struct lexer_token *tok, struct Expr *x)
 {
-    struct Not *n = mg_region_alloc(frontend_region,sizeof(struct Not));
+    struct Not *n = mg_region_alloc(longterm_region,sizeof(struct Not));
 
     n->base.base.op   = tok;
     n->base.base.type = Type_Bool;
@@ -828,7 +822,7 @@ static char *not_tostring(struct Node *self)
     char *s  = n->base.e1->base.tostring((struct Node *)n->base.e1);
 
     size_t len = strlen(op) + strlen(s) + 5;
-    char *buf = mg_region_alloc(frontend_region,len);
+    char *buf = mg_region_alloc(longterm_region,len);
     snprintf(buf, len, "%s %s", op, s);
     return buf;
 }
@@ -837,7 +831,7 @@ static void rel_jumping(struct Node *self, int t, int f);
 
 struct Rel *rel_new(struct lexer_token *tok, struct Expr *e1, struct Expr *e2)
 {
-    struct Rel *r = mg_region_alloc(frontend_region,sizeof(struct Rel));
+    struct Rel *r = mg_region_alloc(longterm_region,sizeof(struct Rel));
 
     r->base.base.op   = tok;
     r->base.base.type = Type_Bool;
@@ -907,7 +901,7 @@ static void rel_jumping(struct Node *self, int t, int f)
     char *op = token_to_string(r->base.base.op);
 
     size_t len = strlen(s1) + strlen(op) + strlen(s2) + 5;
-    char *test = mg_region_alloc(frontend_region,len);
+    char *test = mg_region_alloc(longterm_region,len);
     snprintf(test, len, "%s %s %s", s1, op, s2);
 
     node_emit_jumps(test, t, f);
@@ -932,7 +926,7 @@ int intern_string(const char *s)
 static char *unescape_c_string(const char *s)
 {
     size_t len = strlen(s);
-    char *out = mg_region_alloc(frontend_region,len + 1);
+    char *out = mg_region_alloc(longterm_region,len + 1);
     if (!out) return NULL;
 
     char *w = out;
@@ -977,7 +971,7 @@ done:
 
 struct Expr *string_literal_new(const char *s)
 {
-    struct StringLiteral *sl = mg_region_alloc(frontend_region,sizeof(*sl));
+    struct StringLiteral *sl = mg_region_alloc(longterm_region,sizeof(*sl));
 
     sl->base.base.tag = TAG_STRING;
     sl->base.op       = NULL;
@@ -998,14 +992,14 @@ static char *access_tostring(struct Node *self)
     char *idx = a->index->base.tostring((struct Node *)a->index);
 
     size_t len = strlen(arr) + strlen(idx) + 10;
-    char *buf = mg_region_alloc(frontend_region,len);
+    char *buf = mg_region_alloc(longterm_region,len);
     snprintf(buf, len, "%s [ %s ]", arr, idx);
     return buf;
 }
 
 struct Access *access_new(struct Expr *array, struct Expr *index, struct Type *type)
 {
-    struct Access *a = mg_region_alloc(frontend_region,sizeof(struct Access));
+    struct Access *a = mg_region_alloc(longterm_region,sizeof(struct Access));
 
     a->base.base.op   = NULL;
     a->base.base.type = type;
@@ -1027,7 +1021,7 @@ struct Access *access_new(struct Expr *array, struct Expr *index, struct Type *t
 
 struct Id *id_new_from_name(const char *name, struct Type *ty, int offset)
 {
-    struct lexer_token *tok = mg_region_alloc(frontend_region,sizeof(*tok));
+    struct lexer_token *tok = mg_region_alloc(longterm_region,sizeof(*tok));
     if (!tok)
         printf("out of memory in id_new_from_name");
 
@@ -1048,7 +1042,7 @@ static char *id_tostring(struct Node *self)
 
 struct Id *id_new(struct lexer_token *word, struct Type *type, int offset)
 {
-    struct Id *id = mg_region_alloc(frontend_region,sizeof(*id));
+    struct Id *id = mg_region_alloc(longterm_region,sizeof(*id));
 
     id->base.op   = word;
     id->base.type = type;
@@ -1073,7 +1067,7 @@ static void seq_gen(struct Node *self, int b, int a);
 
 struct Seq *seq_new(struct Stmt *s1, struct Stmt *s2)
 {
-    struct Seq *s = mg_region_alloc(frontend_region,sizeof(struct Seq));
+    struct Seq *s = mg_region_alloc(longterm_region,sizeof(struct Seq));
     s->s1 = s1;
     s->s2 = s2;
 
@@ -1102,7 +1096,7 @@ static void if_gen(struct Node *self, int b, int a);
 
 struct If *if_new(struct Expr *expr, struct Stmt *stmt)
 {
-    struct If *i = mg_region_alloc(frontend_region,sizeof(struct If));
+    struct If *i = mg_region_alloc(longterm_region,sizeof(struct If));
 
     i->expr = expr;
     i->stmt = stmt;
@@ -1128,7 +1122,7 @@ static void else_gen(struct Node *self, int b, int a);
 
 struct Else *else_new(struct Expr *expr, struct Stmt *s1, struct Stmt *s2)
 {
-    struct Else *e = mg_region_alloc(frontend_region,sizeof(struct Else));
+    struct Else *e = mg_region_alloc(longterm_region,sizeof(struct Else));
 
     e->expr  = expr;
     e->stmt1 = s1;
@@ -1185,7 +1179,7 @@ static void set_gen(struct Node *self, int b, int a)
 
 struct Set *set_new(struct Id *id, struct Expr *expr)
 {
-    struct Set *s = mg_region_alloc(frontend_region,sizeof(struct Set));
+    struct Set *s = mg_region_alloc(longterm_region,sizeof(struct Set));
 
     s->id   = id;
     s->expr = expr;
@@ -1229,7 +1223,7 @@ static void setelem_gen(struct Node *self, int b, int a)
 
 struct SetElem *setelem_new(struct Access *x, struct Expr *y)
 {
-    struct SetElem *s = mg_region_alloc(frontend_region,sizeof(struct SetElem));
+    struct SetElem *s = mg_region_alloc(longterm_region,sizeof(struct SetElem));
 
     s->array = (struct Id *)x->array;
     s->index = x->index;
@@ -1249,14 +1243,14 @@ static int temp_node_count = 0;
 static char *temp_tostring(struct Node *self)
 {
     struct Temp *t = (struct Temp *)self;
-    char *buf = mg_region_alloc(frontend_region,32);
+    char *buf = mg_region_alloc(longterm_region,32);
     snprintf(buf, 32, "t%d", t->number);
     return buf;
 }
 
 struct Temp *temp_new(struct Type *type)
 {
-    struct Temp *t = mg_region_alloc(frontend_region,sizeof(struct Temp));
+    struct Temp *t = mg_region_alloc(longterm_region,sizeof(struct Temp));
 
     t->base.op   = NULL;
     t->base.type = type;
@@ -1277,14 +1271,14 @@ static char *unary_tostring(struct Node *self)
     char *s  = u->expr->base.tostring((struct Node *)u->expr);
 
     size_t len = strlen(op) + strlen(s) + 5;
-    char *buf = mg_region_alloc(frontend_region,len);
+    char *buf = mg_region_alloc(longterm_region,len);
     snprintf(buf, len, "%s %s", op, s);
     return buf;
 }
 
 struct Unary *unary_new(struct lexer_token *tok, struct Expr *expr)
 {
-    struct Unary *u = mg_region_alloc(frontend_region,sizeof(struct Unary));
+    struct Unary *u = mg_region_alloc(longterm_region,sizeof(struct Unary));
 
     u->base.base.op   = tok;
     u->base.base.type = type_max(Type_Int, expr->type);
