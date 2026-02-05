@@ -6,7 +6,7 @@
 #include <stdio.h>
 #include <string.h>
 
-#define COMPILER_DEBUG_ENABLED 1
+#define COMPILER_DEBUG_ENABLED 0
 
 static void compiler_debug(const char *fmt, ...)
 {
@@ -18,14 +18,6 @@ static void compiler_debug(const char *fmt, ...)
 #else
     (void)fmt;
 #endif
-}
-
-static char *parser_strdup(const char *s)
-{
-    size_t n = strlen(s) + 1;
-    char *p = mg_region_alloc(longterm_region, n);
-    memcpy(p, s, n);
-    return p;
 }
 
 extern struct Type     *Type_Int;
@@ -47,8 +39,8 @@ static struct Type *basic_type_from_token(struct lexer_token *tok)
 
 char *token_to_string(struct lexer_token *tok)
 {
-    if (!tok) return parser_strdup("<?>");
-    if (tok->lexeme) return parser_strdup(tok->lexeme);
+    if (!tok) return region_strdup("<?>");
+    if (tok->lexeme) return region_strdup(tok->lexeme);
 
     if (tok->tag == NUM) {
         char *buf = mg_region_alloc(longterm_region, 32);
@@ -57,38 +49,38 @@ char *token_to_string(struct lexer_token *tok)
     }
 
     switch (tok->tag) {
-        case AND_BIT:    return parser_strdup("&");
-        case OR_BIT:     return parser_strdup("|");
-        case LT:         return parser_strdup("<");
-        case GT:         return parser_strdup(">");
-        case PLUS:       return parser_strdup("+");
-        case MINUS:      return parser_strdup("-");
-        case STAR:       return parser_strdup("*");
-        case SLASH:      return parser_strdup("/");
-        case MOD:        return parser_strdup("%");
-        case ASSIGN:     return parser_strdup("=");
-        case ADD_ASSIGN: return parser_strdup("+=");
-        case SUB_ASSIGN: return parser_strdup("-=");
-        case MUL_ASSIGN: return parser_strdup("*=");
-        case DIV_ASSIGN: return parser_strdup("/=");
-        case ARROW:      return parser_strdup("->");
-        case INC:        return parser_strdup("++");
-        case DEC:        return parser_strdup("--");
-        case EQ:         return parser_strdup("==");
-        case NE:         return parser_strdup("!=");
-        case LE:         return parser_strdup("<=");
-        case GE:         return parser_strdup(">=");
-        case AND:        return parser_strdup("&&");
-        case OR:         return parser_strdup("||");
-        case LPAREN:     return parser_strdup("(");
-        case RPAREN:     return parser_strdup(")");
-        case LBRACE:     return parser_strdup("{");
-        case RBRACE:     return parser_strdup("}");
-        case LBRACKET:   return parser_strdup("[");
-        case RBRACKET:   return parser_strdup("]");
-        case COMMA:      return parser_strdup(",");
-        case SEMICOLON:  return parser_strdup(";");
-        case DOT:        return parser_strdup(".");
+        case AND_BIT:    return region_strdup("&");
+        case OR_BIT:     return region_strdup("|");
+        case LT:         return region_strdup("<");
+        case GT:         return region_strdup(">");
+        case PLUS:       return region_strdup("+");
+        case MINUS:      return region_strdup("-");
+        case STAR:       return region_strdup("*");
+        case SLASH:      return region_strdup("/");
+        case MOD:        return region_strdup("%");
+        case ASSIGN:     return region_strdup("=");
+        case ADD_ASSIGN: return region_strdup("+=");
+        case SUB_ASSIGN: return region_strdup("-=");
+        case MUL_ASSIGN: return region_strdup("*=");
+        case DIV_ASSIGN: return region_strdup("/=");
+        case ARROW:      return region_strdup("->");
+        case INC:        return region_strdup("++");
+        case DEC:        return region_strdup("--");
+        case EQ:         return region_strdup("==");
+        case NE:         return region_strdup("!=");
+        case LE:         return region_strdup("<=");
+        case GE:         return region_strdup(">=");
+        case AND:        return region_strdup("&&");
+        case OR:         return region_strdup("||");
+        case LPAREN:     return region_strdup("(");
+        case RPAREN:     return region_strdup(")");
+        case LBRACE:     return region_strdup("{");
+        case RBRACE:     return region_strdup("}");
+        case LBRACKET:   return region_strdup("[");
+        case RBRACKET:   return region_strdup("]");
+        case COMMA:      return region_strdup(",");
+        case SEMICOLON:  return region_strdup(";");
+        case DOT:        return region_strdup(".");
         default: {
             char *buf = mg_region_alloc(longterm_region, 16);
             snprintf(buf, 16, "#%d", tok->tag);
@@ -139,7 +131,7 @@ static void parser_struct_decl(struct Parser *p)
     if (p->look->tag != ID || !p->look->lexeme)
         parser_error(p, "expected struct name");
 
-    char *name = parser_strdup(p->look->lexeme);
+    char *name = region_strdup(p->look->lexeme);
     parser_match(p, ID);
 
     struct StructType *st = struct_new();
@@ -153,7 +145,7 @@ static void parser_struct_decl(struct Parser *p)
         if (p->look->tag != ID || !p->look->lexeme)
             parser_error(p, "expected field name");
 
-        char *fname = parser_strdup(p->look->lexeme);
+        char *fname = region_strdup(p->look->lexeme);
         parser_match(p, ID);
         parser_match(p, SEMICOLON);
 
@@ -257,8 +249,6 @@ static void parser_block_gen(struct Parser *p, int begin, int after)
         }
 
         //mg_region_reset(frontend_region);
-        //mg_region_destroy(frontend_region);
-        //frontend_region = mg_region_create_pool(16);
     }
 
     parser_match(p, RBRACE);
@@ -307,8 +297,6 @@ void parser_program(struct Parser *p)
     while (p->look->tag == STRUCT) {
         parser_struct_decl(p);
         //mg_region_reset(frontend_region);
-        //mg_region_destroy(frontend_region);
-        //frontend_region = mg_region_create(16);
     }
 
     int begin = node_newlabel();
@@ -355,7 +343,7 @@ void parser_decls(struct Parser *p)
             if (p->look->tag != ID || !p->look->lexeme)
                 parser_error(p, "expected struct name");
 
-            char *sname = parser_strdup(p->look->lexeme);
+            char *sname = region_strdup(p->look->lexeme);
             parser_match(p, ID);
 
             struct Type *st = env_get_type(p->top, sname);

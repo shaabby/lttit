@@ -3,6 +3,13 @@
 #include "heap.h"
 #include "lexer.h"
 
+static struct hashmap *all_hashmaps[64];
+static int hashmap_count = 0;
+
+static void track_hashmap(struct hashmap *h) {
+    all_hashmaps[hashmap_count++] = h;
+}
+
 static char *sym_strdup(const char *s)
 {
     size_t n = strlen(s) + 1;
@@ -55,6 +62,7 @@ struct StructType *struct_new(void)
     s->base.tag = TYPE_STRUCT;
     s->base.width = 0;
     hashmap_init(&s->fields, 32, HASHMAP_KEY_STRING);
+    track_hashmap(&s->fields);
     return s;
 }
 
@@ -64,6 +72,7 @@ struct EnumType *enum_new(void)
     e->base.tag = TYPE_ENUM;
     e->base.width = sizeof(int);
     hashmap_init(&e->values, 32, HASHMAP_KEY_STRING);
+    track_hashmap(&e->values);
     return e;
 }
 
@@ -71,7 +80,9 @@ struct Env *env_new(struct Env *prev)
 {
     struct Env *env = mg_region_alloc(longterm_region,sizeof(struct Env));
     hashmap_init(&env->vars, 64, HASHMAP_KEY_STRING);
+    track_hashmap(&env->vars);
     hashmap_init(&env->types, 32, HASHMAP_KEY_STRING);
+    track_hashmap(&env->types);
     env->prev = prev;
     env->level = prev ? prev->level + 1 : 0;
     return env;
@@ -145,4 +156,15 @@ int type_equal(struct Type *a, struct Type *b)
     }
 
     return 0;
+}
+
+void symbol_destroy(void)
+{
+    for (int i = 0; i < hashmap_count; i++) {
+        if (!all_hashmaps[i]) {
+            break;
+        }
+        hashmap_destroy(all_hashmaps[i]);
+    }
+    hashmap_count = 0;
 }

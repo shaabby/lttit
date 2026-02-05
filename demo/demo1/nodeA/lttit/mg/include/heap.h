@@ -4,6 +4,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#define HEAP_DEBUG
+
 struct heap_stats {
     size_t remain_size;
     size_t free_size_iter;
@@ -12,10 +14,12 @@ struct heap_stats {
 };
 
 void   heap_init(void);
-void  *heap_malloc(size_t size);
-void   heap_free(void *ptr);
+void  *heap_malloc_dbg(size_t size, const char *file, int line);
+void   heap_free_dbg(void *ptr, const char *file, int line);
 struct heap_stats heap_get_stats(void);
 void   heap_debug_dump_leaks(void);
 
+#define heap_malloc(size) heap_malloc_dbg(size, __FILE__, __LINE__)
+#define heap_free(ptr)    heap_free_dbg(ptr, __FILE__, __LINE__)
 
 #endif

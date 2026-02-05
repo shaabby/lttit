@@ -1,9 +1,9 @@
 #include "heap.h"
-#include <stdint.h>
 #include <stdio.h>
+#include <stdint.h>
 
 #define PTR_SIZE        uint32_t
-#define CONFIG_HEAP     (14 * 1024)
+#define CONFIG_HEAP     (10 * 1024)
 #define ALIGNMENT_BYTE  0x07
 
 #define MIN_SIZE ((size_t)(heap_struct_size << 1))
@@ -240,7 +240,6 @@ struct heap_stats heap_get_stats(void)
 
 
 #ifdef HEAP_DEBUG
-
 void *heap_malloc_dbg(size_t size, const char *file, int line)
 {
     void *ret = real_heap_malloc(size);
@@ -248,20 +247,10 @@ void *heap_malloc_dbg(size_t size, const char *file, int line)
     return ret;
 }
 
-void heap_free_dbg(void *ptr)
+void heap_free_dbg(void *ptr, const char *file, int line)
 {
     heap_track_free(ptr);
     real_heap_free(ptr);
-}
-
-void *heap_malloc(size_t size)
-{
-    return heap_malloc_dbg(size, __FILE__, __LINE__);
-}
-
-void heap_free(void *ptr)
-{
-    heap_free_dbg(ptr);
 }
 
 #else

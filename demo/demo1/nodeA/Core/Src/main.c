@@ -71,6 +71,7 @@ void SystemClock_Config(void);
  */
 #include "lexer.h"
 #include "parser.h"
+#include "heap.h"
 #include <stdio.h>
 #include <memory.h>
 /*
@@ -285,7 +286,30 @@ int main(void)
 
     while (1) {}
 }
-*/int main(void)
+*/
+
+int cmd_mem()
+{
+    struct heap_stats st = heap_get_stats();
+    char buf[128];
+
+    int n = snprintf(buf, sizeof(buf),
+                     "heap_remain: %u\r\n"
+                     "heap_free_iter: %u\r\n"
+                     "heap_max_block: %u\r\n"
+                     "heap_free_blocks: %u\r\n",
+                     st.remain_size,
+                     st.free_size_iter,
+                     st.max_free_block,
+                     st.free_blocks);
+
+    if (n > 0)
+        printf(buf, n);
+
+    return 0;
+}
+
+int main(void)
 {
 
     const char *src =
@@ -316,19 +340,21 @@ int main(void)
     MX_GPIO_Init();
     MX_USART1_UART_Init();
 
-    int s = heap_malloc(50);
+    cmd_mem();
+    heap_debug_dump_leaks();
 
-    compiler_init();
     lexer_set_input_buffer(src, strlen(src));
 
     struct lexer lex;
-    lexer_init(&lex);
+    lexer_init(&lex, 128, 16, (6*1024));
 
     struct Parser *p = parser_new(&lex);
 
     parser_program(p);
+    frontend_destroy(&lex);
 
-    int a = heap_malloc(50);
+    cmd_mem();
+    heap_debug_dump_leaks();
 
     mg_region_print_pools(frontend_region);
     mg_region_print_pools(longterm_region);

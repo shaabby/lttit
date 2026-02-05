@@ -6,9 +6,8 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
-#include <stdarg.h>
 
-#define COMPILER_DEBUG_ENABLED 1
+#define COMPILER_DEBUG_ENABLED 0
 
 static void compiler_debug(const char *fmt, ...)
 {
@@ -38,7 +37,7 @@ int new_temp(void)
     return temp_count++;
 }
 
-static char *region_strdup(const char *s)
+char *region_strdup(const char *s)
 {
     size_t n = strlen(s) + 1;
     char *p = mg_region_alloc(longterm_region, n);
@@ -582,7 +581,19 @@ static char *op_tostring(struct Node *self)
     return token_to_string(o->base.op);
 }
 
-static char *arith_tostring(struct Node *self);
+static char *arith_tostring(struct Node *self)
+{
+    struct Arith *a = (struct Arith *)self;
+
+    char *s1 = a->e1->base.tostring((struct Node *)a->e1);
+    char *s2 = a->e2->base.tostring((struct Node *)a->e2);
+    char *op = token_to_string(a->base.base.op);
+
+    size_t len = strlen(s1) + strlen(op) + strlen(s2) + 10;
+    char *buf = mg_region_alloc(frontend_region,len);
+    snprintf(buf, len, "%s %s %s", s1, op, s2);
+    return buf;
+}
 
 struct Arith *arith_new(struct lexer_token *tok, struct Expr *e1, struct Expr *e2)
 {
@@ -604,20 +615,6 @@ struct Arith *arith_new(struct lexer_token *tok, struct Expr *e1, struct Expr *e
     a->base.base.base.tostring = arith_tostring;
 
     return a;
-}
-
-static char *arith_tostring(struct Node *self)
-{
-    struct Arith *a = (struct Arith *)self;
-
-    char *s1 = a->e1->base.tostring((struct Node *)a->e1);
-    char *s2 = a->e2->base.tostring((struct Node *)a->e2);
-    char *op = token_to_string(a->base.base.op);
-
-    size_t len = strlen(s1) + strlen(op) + strlen(s2) + 10;
-    char *buf = mg_region_alloc(longterm_region,len);
-    snprintf(buf, len, "%s %s %s", s1, op, s2);
-    return buf;
 }
 
 static char *bitand_tostring(struct Node *self)
@@ -697,7 +694,7 @@ static char *logical_tostring(struct Node *self)
     char *op = token_to_string(l->base.op);
 
     size_t len = strlen(s1) + strlen(op) + strlen(s2) + 10;
-    char *buf = mg_region_alloc(longterm_region,len);
+    char *buf = mg_region_alloc(frontend_region,len);
     snprintf(buf, len, "%s %s %s", s1, op, s2);
     return buf;
 }
@@ -992,7 +989,7 @@ static char *access_tostring(struct Node *self)
     char *idx = a->index->base.tostring((struct Node *)a->index);
 
     size_t len = strlen(arr) + strlen(idx) + 10;
-    char *buf = mg_region_alloc(longterm_region,len);
+    char *buf = mg_region_alloc(frontend_region,len);
     snprintf(buf, len, "%s [ %s ]", arr, idx);
     return buf;
 }
@@ -1236,31 +1233,6 @@ struct SetElem *setelem_new(struct Access *x, struct Expr *y)
     s->base.base.gen = setelem_gen;
 
     return s;
-}
-
-static int temp_node_count = 0;
-
-static char *temp_tostring(struct Node *self)
-{
-    struct Temp *t = (struct Temp *)self;
-    char *buf = mg_region_alloc(longterm_region,32);
-    snprintf(buf, 32, "t%d", t->number);
-    return buf;
-}
-
-struct Temp *temp_new(struct Type *type)
-{
-    struct Temp *t = mg_region_alloc(longterm_region,sizeof(struct Temp));
-
-    t->base.op   = NULL;
-    t->base.type = type;
-    t->number    = temp_node_count++;
-
-    t->base.base.gen      = (void *)expr_gen;
-    t->base.base.jumping  = expr_jumping;
-    t->base.base.tostring = temp_tostring;
-
-    return t;
 }
 
 static char *unary_tostring(struct Node *self)

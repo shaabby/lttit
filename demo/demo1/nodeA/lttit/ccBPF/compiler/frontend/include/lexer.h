@@ -7,9 +7,6 @@
 extern mg_region_handle frontend_region;
 extern mg_region_handle longterm_region;
 
-void compiler_init(void);
-void compiler_destroy(void);
-
 enum tag {
     AND = 256,     // &&
     BASIC,         // int, short, bool, char
@@ -83,7 +80,8 @@ struct lexer {
     struct hashmap words;
 };
 
-void lexer_init(struct lexer *lex);
+void lexer_init(struct lexer *lex, uint8_t count, uint8_t region_bit, uint32_t cap);
+void frontend_destroy(struct lexer *lex);
 struct lexer_token *lexer_scan(struct lexer *lex);
 void lexer_reserve(struct lexer *lex, const char *lexeme, int tag);
 void lexer_set_input_buffer(const char *buf, size_t len);

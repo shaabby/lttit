@@ -8,6 +8,7 @@
 
 void init_constant_singletons(void);
 void init_stmt_singletons(void);
+char *region_strdup(const char *s);
 
 enum NodeTag {
     TAG_NODE = 0,
@@ -32,7 +33,6 @@ enum NodeTag {
     TAG_IF,
     TAG_ELSE,
     TAG_SEQ,
-    TAG_BLOCK,
 };
 
 struct Node {
@@ -154,13 +154,6 @@ struct BitOr {
 
 struct BitOr *bitor_new(struct lexer_token *tok, struct Expr *e1, struct Expr *e2);
 
-struct Break {
-    struct Stmt  base;
-    struct Stmt *stmt;
-};
-
-struct Break *break_new(void);
-
 struct Constant {
     struct Expr base;
     int int_val;
@@ -261,13 +254,6 @@ struct SetElem {
 };
 
 struct SetElem *setelem_new(struct Access *x, struct Expr *y);
-
-struct Temp {
-    struct Expr base;
-    int         number;
-};
-
-struct Temp *temp_new(struct Type *type);
 
 struct Unary {
     struct Op  base;

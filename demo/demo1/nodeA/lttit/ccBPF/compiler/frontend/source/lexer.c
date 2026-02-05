@@ -1,6 +1,7 @@
 #include "lexer.h"
 #include "heap.h"
 #include "inter.h"
+#include "symbols.h"
 #include <ctype.h>
 #include <string.h>
 
@@ -9,20 +10,6 @@ mg_region_handle longterm_region;
 static const char *lexer_buf = NULL;
 static size_t lexer_len = 0;
 static size_t lexer_pos = 0;
-
-void compiler_init(void)
-{
-    frontend_region = mg_region_create_pool(16);
-    longterm_region = mg_region_create_bump(10*1024);
-    init_stmt_singletons();
-    init_constant_singletons();
-}
-
-void compiler_destroy(void)
-{
-    mg_region_destroy(frontend_region);
-    mg_region_destroy(longterm_region);
-}
 
 void lexer_set_input_buffer(const char *buf, size_t len)
 {
@@ -82,12 +69,17 @@ static void readch(struct lexer *lex)
     lex->peek = reader_next_char();
 }
 
-void lexer_init(struct lexer *lex)
+void lexer_init(struct lexer *lex, uint8_t count, uint8_t region_bit, uint32_t cap)
 {
+    frontend_region = mg_region_create_pool(region_bit);
+    longterm_region = mg_region_create_bump(cap);
+    init_stmt_singletons();
+    init_constant_singletons();
+
+    hashmap_init(&lex->words, count, HASHMAP_KEY_STRING);
+
     lex->line = 1;
     lex->peek = ' ';
-
-    hashmap_init(&lex->words, 128, HASHMAP_KEY_STRING);
 
     lexer_reserve(lex, "if", IF);
     lexer_reserve(lex, "else", ELSE);
@@ -102,6 +94,14 @@ void lexer_init(struct lexer *lex)
     lexer_reserve(lex, "return", RETURN);
 
     lexer_reserve(lex, "struct", STRUCT);
+}
+
+void frontend_destroy(struct lexer *lex)
+{
+    hashmap_destroy(&lex->words);
+    symbol_destroy();
+    mg_region_destroy(frontend_region);
+    mg_region_destroy(longterm_region);
 }
 
 static int readch_match(struct lexer *lex, char c)
@@ -128,13 +128,13 @@ struct lexer_token *lexer_scan(struct lexer *lex)
 
     switch (lex->peek) {
         case '"': {
-            char buf[128];
+            char buf[64];
             int i = 0;
 
             readch(lex);
 
             while (lex->peek != '"' && lex->peek != '\0') {
-                if (i < 128)
+                if (i < 64)
                     buf[i++] = lex->peek;
                 readch(lex);
             }
@@ -145,7 +145,7 @@ struct lexer_token *lexer_scan(struct lexer *lex)
 
             struct lexer_token *t = mg_region_alloc(frontend_region, sizeof(*t));
             t->tag = STRING;
-            t->lexeme = strdup(buf);
+            t->lexeme = region_strdup(buf);
             return t;
         }
 
@@ -248,7 +248,7 @@ struct lexer_token *lexer_scan(struct lexer *lex)
         if (lex->peek == 'x' || lex->peek == 'X') {
             readch(lex);
             int v = 0;
-            while (isxdigit(lex->peek)) {
+            while (isxdigit((unsigned char)lex->peek)) {
                 char c = lex->peek;
                 readch(lex);
 
