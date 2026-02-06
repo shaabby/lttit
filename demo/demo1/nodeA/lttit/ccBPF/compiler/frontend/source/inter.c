@@ -885,14 +885,14 @@ struct Rel *rel_new(struct lexer_token *tok, struct Expr *e1, struct Expr *e2)
     r->base.e2 = e2;
 
     switch (tok->tag) {
-    case LT:  r->relop = AST_LT; break;
-    case LE:  r->relop = AST_LE; break;
-    case GT:  r->relop = AST_GT; break;
-    case GE:  r->relop = AST_GE; break;
-    case EQ:  r->relop = AST_EQ; break;
-    case NE:  r->relop = AST_NE; break;
-    default:
-        node_error((struct Node*)r, "unknown relational operator");
+        case LT:  r->relop = AST_LT; break;
+        case LE:  r->relop = AST_LE; break;
+        case GT:  r->relop = AST_GT; break;
+        case GE:  r->relop = AST_GE; break;
+        case EQ:  r->relop = AST_EQ; break;
+        case NE:  r->relop = AST_NE; break;
+        default:
+            node_error((struct Node*)r, "unknown relational operator");
     }
 
     r->base.base.base.tag      = TAG_REL;
@@ -932,35 +932,35 @@ static char *unescape_c_string(const char *s)
         if (*r == '\\') {
             r++;
             switch (*r) {
-            case 'n':
-                *w++ = '\n';
-                r++;
-                break;
-            case 't':
-                *w++ = '\t';
-                r++;
-                break;
-            case '\\':
-                *w++ = '\\';
-                r++;
-                break;
-            case '\"':
-                *w++ = '\"';
-                r++;
-                break;
-            case '\0':
-                goto done;
-            default:
-                *w++ = '\\';
-                *w++ = *r++;
-                break;
+                case 'n':
+                    *w++ = '\n';
+                    r++;
+                    break;
+                case 't':
+                    *w++ = '\t';
+                    r++;
+                    break;
+                case '\\':
+                    *w++ = '\\';
+                    r++;
+                    break;
+                case '\"':
+                    *w++ = '\"';
+                    r++;
+                    break;
+                case '\0':
+                    goto done;
+                default:
+                    *w++ = '\\';
+                    *w++ = *r++;
+                    break;
             }
         } else {
             *w++ = *r++;
         }
     }
 
-done:
+    done:
     *w = '\0';
     return out;
 }
@@ -1168,7 +1168,7 @@ static void set_gen(struct Node *self, int b, int a)
 
 struct Set *set_new(struct Id *id, struct Expr *expr)
 {
-    struct Set *s = mg_region_alloc(frontend_region,sizeof(struct Set));
+    struct Set *s = mg_region_alloc(longterm_region,sizeof(struct Set));
 
     s->id   = id;
     s->expr = expr;

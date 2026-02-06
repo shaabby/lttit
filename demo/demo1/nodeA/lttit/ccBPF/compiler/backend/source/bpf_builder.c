@@ -1,27 +1,34 @@
 #include "bpf_builder.h"
-#include "heap.h"
-#include <stdio.h>
-#include <stdlib.h>
+#include "mg_alloc.h"
+#include "lexer.h"
 #include <string.h>
+#include <stdint.h>
 
-void bpf_builder_init(struct bpf_builder *b)
+struct mg_region *backend_region;
+extern char *string_pool[256];
+extern int   string_pool_count;
+
+void bpf_builder_init(struct bpf_builder *b, uint32_t cap)
 {
-    b->count = 0;
+    backend_region = mg_region_create_bump(cap);
+
+    b->count    = 0;
     b->capacity = 128;
 
-    b->insns = heap_malloc(sizeof(struct bpf_insn) * b->capacity);
-    if (!b->insns)
-        abort();
+    b->insns = mg_region_alloc(backend_region,
+                               sizeof(struct bpf_insn) * b->capacity);
+    if (!b->insns) {
+        while (1) { }
+    }
 }
 
 void bpf_builder_free(struct bpf_builder *b)
 {
-    if (b->insns)
-        heap_free(b->insns);
-
-    b->insns = NULL;
-    b->count = 0;
+    b->insns    = NULL;
+    b->count    = 0;
     b->capacity = 0;
+    mg_region_destroy(backend_region);
+    mg_region_destroy(ir_region);
 }
 
 void bpf_builder_reset(struct bpf_builder *b)
@@ -32,14 +39,18 @@ void bpf_builder_reset(struct bpf_builder *b)
 static void bpf_builder_grow(struct bpf_builder *b)
 {
     int new_cap = b->capacity * 2;
-    struct bpf_insn *new_insns;
 
-    new_insns = realloc(b->insns,
-                        sizeof(struct bpf_insn) * new_cap);
-    if (!new_insns)
-        abort();
+    struct bpf_insn *new_insns =
+            mg_region_alloc(backend_region,
+                            sizeof(struct bpf_insn) * new_cap);
+    if (!new_insns) {
+        while (1) { }
+    }
 
-    b->insns = new_insns;
+    memcpy(new_insns, b->insns,
+           (size_t)b->count * sizeof(struct bpf_insn));
+
+    b->insns    = new_insns;
     b->capacity = new_cap;
 }
 
@@ -62,14 +73,11 @@ int bpf_builder_count(struct bpf_builder *b)
     return b->count;
 }
 
-extern char *string_pool[256];
-extern int   string_pool_count;
-
 uint8_t *ccbpf_pack_memory(struct bpf_insn *insns,
                            size_t insn_count,
                            size_t *out_len)
 {
-    struct CCBPF_Header hdr = {0};
+    struct CCBPF_Header hdr = (struct CCBPF_Header){0};
 
     hdr.magic   = CCBPF_MAGIC;
     hdr.version = 1;
@@ -87,14 +95,13 @@ uint8_t *ccbpf_pack_memory(struct bpf_insn *insns,
 
     hdr.data_offset = hdr.code_offset + hdr.code_size;
     hdr.data_size   = str_size;
-
-    hdr.entry = 0;
+    hdr.entry       = 0;
 
     size_t total_len = sizeof(struct CCBPF_Header)
                        + hdr.code_size
                        + hdr.data_size;
 
-    uint8_t *buf = heap_malloc(total_len);
+    uint8_t *buf = mg_region_alloc(backend_region, total_len);
     if (!buf)
         return NULL;
 
@@ -123,43 +130,4 @@ uint8_t *ccbpf_pack_memory(struct bpf_insn *insns,
         *out_len = total_len;
 
     return buf;
-}
-
-int ccbpf_write_file(const char *path,
-                     const uint8_t *buf,
-                     size_t len)
-{
-    FILE *fp = fopen(path, "wb");
-    if (!fp) {
-        perror("fopen ccbpf");
-        return -1;
-    }
-
-    size_t n = fwrite(buf, 1, len, fp);
-    fclose(fp);
-
-    if (n != len) {
-        fprintf(stderr, "ccbpf_write_file: short write\n");
-        return -1;
-    }
-
-    return 0;
-}
-
-void write_ccbpf(const char *path,
-                 struct bpf_insn *insns,
-                 size_t insn_count)
-{
-    size_t len = 0;
-    uint8_t *buf = ccbpf_pack_memory(insns, insn_count, &len);
-    if (!buf) {
-        fprintf(stderr, "write_ccbpf: pack failed\n");
-        return;
-    }
-
-    if (ccbpf_write_file(path, buf, len) != 0) {
-        fprintf(stderr, "write_ccbpf: write_file failed\n");
-    }
-
-    heap_free(buf);
 }

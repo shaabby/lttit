@@ -72,6 +72,7 @@ void SystemClock_Config(void);
 #include "lexer.h"
 #include "parser.h"
 #include "heap.h"
+#include "ir_lowering.h"
 #include <stdio.h>
 #include <memory.h>
 /*
@@ -343,7 +344,7 @@ int main(void)
     cmd_mem();
     heap_debug_dump_leaks();
 
-    compiler_init(10, (5*1024), (3*1024));
+    compiler_init(16, (4*1024), (2*1024));
     lexer_set_input_buffer(src, strlen(src));
 
     struct lexer lex;
@@ -360,9 +361,30 @@ int main(void)
 
     cmd_mem();
     heap_debug_dump_leaks();
+
     mg_region_print_pools(frontend_region);
     mg_region_print_pools(longterm_region);
     mg_region_print_pools(ir_region);
+
+    struct bpf_builder b;
+    bpf_builder_init(&b, (2*1024));
+
+    struct ir_mes im;
+    ir_mes_get(&im);
+
+    ir_lower_program(im.ir_head, im.label_count, &b);
+
+    struct bpf_insn *prog = bpf_builder_data(&b);
+    int prog_len = bpf_builder_count(&b);
+
+    size_t image_len = 0;
+    uint8_t *image = ccbpf_pack_memory(prog, (size_t)prog_len, &image_len);
+    printf("=== CCBPF IMAGE READY ===\n");
+    printf("Image at %p, size = %u bytes\n", image, (unsigned)image_len);
+
+    mg_region_print_pools(backend_region);
+    bpf_builder_free(&b);
+
 
     return 0;
 }
