@@ -247,8 +247,11 @@ static void parser_block_gen(struct Parser *p, int begin, int after)
         if (s && s->base.gen) {
             s->base.gen((struct Node *)s, begin, after);
         }
-
-        mg_region_reset(frontend_region);
+        /* reuse or not reuse, this is a question.
+        mg_region_reset(frontend_region); or?
+        mg_region_destroy(frontend_region);
+        frontend_region = mg_region_create_pool(16);
+         */
     }
 
     parser_match(p, RBRACE);
@@ -296,7 +299,11 @@ void parser_program(struct Parser *p)
 {
     while (p->look->tag == STRUCT) {
         parser_struct_decl(p);
-        mg_region_reset(frontend_region);
+        /* reuse or not reuse, this is a question.
+        mg_region_reset(frontend_region); or?
+        mg_region_destroy(frontend_region);
+        frontend_region = mg_region_create_pool(16);
+         */
     }
 
     int begin = node_newlabel();

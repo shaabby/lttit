@@ -7,9 +7,9 @@
 #include <stdio.h>
 
 #define MG_MAX_CLASS_BITS        12
-#define MG_MIN_CLASS_BYTES       16
+#define MG_MIN_CLASS_BYTES       32
 
-#define MG_POOL_BLOCKS_SMALL     16
+#define MG_POOL_BLOCKS_SMALL     8
 #define MG_POOL_BLOCKS_MEDIUM    2
 #define MG_POOL_BLOCKS_LARGE     1
 

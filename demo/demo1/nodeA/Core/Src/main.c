@@ -312,28 +312,45 @@ int cmd_mem()
 
 int main(void)
 {
-
     const char *src =
-            "struct udp_hdr {"
-            "    unsigned short sport;"
-            "    unsigned short dport;"
-            "};"
-            ""
-            "int hook(void *ctx) {"
-            "    unsigned int x;"
-            "    unsigned int y;"
-            "    unsigned int key;"
-            "    unsigned int val;"
-            "    struct udp_hdr *uh;"
-            "    uh = (struct udp_hdr *)&ctx[0];"
-            "    x = ntohs(uh->sport);"
-            "    y = ntohs(uh->dport);"
-            "    key = x;"
-            "    val = y;"
-            "    map_update(0, key, val);"
-            "    val = map_lookup(0, key);"
-            "    return 0;"
-            "}";
+            "struct udp_hdr {\n"
+            "    unsigned short sport;\n"
+            "    unsigned short dport;\n"
+            "};\n"
+            "\n"
+            "int hook(void *ctx)\n"
+            "{\n"
+            "    unsigned int x;\n"
+            "    unsigned int y;\n"
+            "    unsigned int key;\n"
+            "    unsigned int val;\n"
+            "    struct udp_hdr *uh;\n"
+            "\n"
+            "    uh = (struct udp_hdr *)&ctx[0];\n"
+            "    x = ntohs(uh->sport);\n"
+            "    print(x);\n"
+            "    y = ntohs(uh->dport);\n"
+            "    print(y);\n"
+            "\n"
+            "    key = x;\n"
+            "    val = y;\n"
+            "\n"
+            "    map_update(0, key, val);\n"
+            "\n"
+            "    val = map_lookup(0, key);\n"
+            "    print(val);\n"
+            "\n"
+            "    print(map_lookup(0, 9999));\n"
+            "    map_update(0, 1, 11);\n"
+            "    map_update(0, 2, 22);\n"
+            "    map_update(0, 3, 33);\n"
+            "    print(map_lookup(0, 1));\n"
+            "    print(map_lookup(0, 2));\n"
+            "    print(map_lookup(0, 3));\n"
+            "\n"
+            "    return x + y;\n"
+            "}\n";
+
 
     HAL_Init();
     SystemClock_Config();
@@ -342,9 +359,8 @@ int main(void)
     MX_USART1_UART_Init();
 
     cmd_mem();
-    heap_debug_dump_leaks();
 
-    compiler_init(16, (4*1024), (2*1024));
+    compiler_init(16, (9*1024), (4*1024));
     lexer_set_input_buffer(src, strlen(src));
 
     struct lexer lex;
@@ -367,7 +383,7 @@ int main(void)
     mg_region_print_pools(ir_region);
 
     struct bpf_builder b;
-    bpf_builder_init(&b, (2*1024));
+    bpf_builder_init(&b, (5*1024));
 
     struct ir_mes im;
     ir_mes_get(&im);
@@ -385,6 +401,7 @@ int main(void)
     mg_region_print_pools(backend_region);
     bpf_builder_free(&b);
 
+    cmd_mem();
 
     return 0;
 }
