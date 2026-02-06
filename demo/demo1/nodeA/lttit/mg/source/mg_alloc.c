@@ -6,14 +6,14 @@
 #include <stdint.h>
 #include <stdio.h>
 
-#define MG_MAX_CLASS_BITS        16
-#define MG_MIN_CLASS_BYTES       4
+#define MG_MAX_CLASS_BITS        12
+#define MG_MIN_CLASS_BYTES       16
 
-#define MG_POOL_BLOCKS_SMALL     8
+#define MG_POOL_BLOCKS_SMALL     16
 #define MG_POOL_BLOCKS_MEDIUM    2
 #define MG_POOL_BLOCKS_LARGE     1
 
-#define MG_BLOCK_THRESHOLD_SMALL 64
+#define MG_BLOCK_THRESHOLD_SMALL 32
 #define MG_BLOCK_THRESHOLD_MED   128
 
 struct mg_pool_node {
@@ -129,22 +129,26 @@ mg_region_handle mg_region_create_bump(size_t cap)
 
 static void *mg_region_alloc_class(struct mg_region *r, size_t size)
 {
-    size_t need = size + sizeof(struct mg_block_header);
+    size_t  need = size + sizeof(struct mg_block_header);
     uint8_t bits = next_power_of_two_index_u32((uint32_t)need);
 
     if (bits > r->max_bits)
         return NULL;
 
-    struct mg_class *c = &r->u.pool.classes[bits];
+    for (uint8_t b = bits; b <= r->max_bits; b++) {
+        struct mg_class *c = &r->u.pool.classes[b];
 
-    for (struct mg_pool_node *n = c->pools; n; n = n->next) {
-        void *blk = membit_alloc(n->pool);
-        if (blk) {
-            struct mg_block_header *h = (struct mg_block_header *)blk;
-            h->pool = n->pool;
-            return (uint8_t *)blk + sizeof(struct mg_block_header);
+        for (struct mg_pool_node *n = c->pools; n; n = n->next) {
+            void *blk = membit_alloc(n->pool);
+            if (blk) {
+                struct mg_block_header *h = (struct mg_block_header *)blk;
+                h->pool = n->pool;
+                return (uint8_t *)blk + sizeof(struct mg_block_header);
+            }
         }
     }
+
+    struct mg_class *c = &r->u.pool.classes[bits];
 
     struct mg_pool_node *n = mg_pool_node_new(c->block_size);
     if (!n)

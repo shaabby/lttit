@@ -343,10 +343,11 @@ int main(void)
     cmd_mem();
     heap_debug_dump_leaks();
 
+    compiler_init(10, (5*1024));
     lexer_set_input_buffer(src, strlen(src));
 
     struct lexer lex;
-    lexer_init(&lex, 128, 16, (6*1024));
+    lexer_init(&lex);
 
     struct Parser *p = parser_new(&lex);
 

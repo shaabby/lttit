@@ -5,6 +5,8 @@
 #include <ctype.h>
 #include <string.h>
 
+#define LEXER_MAP_SIZE 16
+
 mg_region_handle frontend_region;
 mg_region_handle longterm_region;
 static const char *lexer_buf = NULL;
@@ -69,14 +71,9 @@ static void readch(struct lexer *lex)
     lex->peek = reader_next_char();
 }
 
-void lexer_init(struct lexer *lex, uint8_t count, uint8_t region_bit, uint32_t cap)
+void lexer_init(struct lexer *lex)
 {
-    frontend_region = mg_region_create_pool(region_bit);
-    longterm_region = mg_region_create_bump(cap);
-    init_stmt_singletons();
-    init_constant_singletons();
-
-    hashmap_init(&lex->words, count, HASHMAP_KEY_STRING);
+    hashmap_init(&lex->words, LEXER_MAP_SIZE, HASHMAP_KEY_STRING);
 
     lex->line = 1;
     lex->peek = ' ';
@@ -94,6 +91,15 @@ void lexer_init(struct lexer *lex, uint8_t count, uint8_t region_bit, uint32_t c
     lexer_reserve(lex, "return", RETURN);
 
     lexer_reserve(lex, "struct", STRUCT);
+}
+
+
+void compiler_init(uint8_t region_bit, uint32_t cap)
+{
+    frontend_region = mg_region_create_pool(region_bit);
+    longterm_region = mg_region_create_bump(cap);
+    init_stmt_singletons();
+    init_constant_singletons();
 }
 
 void frontend_destroy(struct lexer *lex)

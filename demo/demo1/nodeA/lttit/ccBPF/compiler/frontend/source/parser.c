@@ -248,7 +248,7 @@ static void parser_block_gen(struct Parser *p, int begin, int after)
             s->base.gen((struct Node *)s, begin, after);
         }
 
-        //mg_region_reset(frontend_region);
+        mg_region_reset(frontend_region);
     }
 
     parser_match(p, RBRACE);
@@ -296,7 +296,7 @@ void parser_program(struct Parser *p)
 {
     while (p->look->tag == STRUCT) {
         parser_struct_decl(p);
-        //mg_region_reset(frontend_region);
+        mg_region_reset(frontend_region);
     }
 
     int begin = node_newlabel();

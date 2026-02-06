@@ -80,7 +80,8 @@ struct lexer {
     struct hashmap words;
 };
 
-void lexer_init(struct lexer *lex, uint8_t count, uint8_t region_bit, uint32_t cap);
+void compiler_init(uint8_t region_bit, uint32_t cap);
+void lexer_init(struct lexer *lex);
 void frontend_destroy(struct lexer *lex);
 struct lexer_token *lexer_scan(struct lexer *lex);
 void lexer_reserve(struct lexer *lex, const char *lexeme, int tag);
