@@ -1,64 +1,168 @@
-#include <stdio.h>
-#include <stdlib.h>
-#include "ccbpf.h" 
+#include <stdint.h>
+#include <string.h>
+#include "ccbpf.h"
+#include "heap.h"
 
-struct ccbpf_program *ccbpf_load(const char *path)
+struct hook_node {
+    struct ccbpf_program *prog;
+    struct hook_node *next;
+};
+
+struct hook_entry {
+    const char *name;
+    struct hook_node *head;
+};
+
+static struct hook_entry g_hooks[] = {
+        { "hook_udp_input", NULL },
+        { "hook_tcp_input", NULL },
+        { "hook_sched", NULL },
+        { NULL, NULL }
+};
+
+static struct hook_entry *find_hook(const char *name)
 {
-    struct ccbpf_program *prog = calloc(1, sizeof(*prog));
+    for (int i = 0; g_hooks[i].name; i++) {
+        if (strcmp(g_hooks[i].name, name) == 0)
+            return &g_hooks[i];
+    }
+    return NULL;
+}
+
+int hook_attach(const char *hook_name, uint8_t *image, size_t len)
+{
+    struct hook_entry *h = find_hook(hook_name);
+    if (!h)
+        return -1;
+
+    struct ccbpf_program *prog = ccbpf_load_from_memory(image, len);
+    if (!prog)
+        return -1;
+
+    struct hook_node *node = heap_malloc(sizeof(*node));
+    if (!node) {
+        ccbpf_unload(prog);
+        return -1;
+    }
+
+    node->prog = prog;
+    node->next = h->head;
+    h->head = node;
+
+    printf("[hook] ATTACH %s (prog=%p)\n", hook_name, prog);
+    return 0;
+}
+
+int hook_detach(const char *hook_name)
+{
+    struct hook_entry *h = find_hook(hook_name);
+    if (!h)
+        return -1;
+
+    struct hook_node *cur = h->head;
+    while (cur) {
+        struct hook_node *next = cur->next;
+        ccbpf_unload(cur->prog);
+        heap_free(cur);
+        cur = next;
+    }
+
+    h->head = NULL;
+    printf("[hook] DETACH %s\n", hook_name);
+    return 0;
+}
+
+uint32_t hook_run(const char *hook_name, uint8_t *frame, size_t frame_size)
+{
+    struct hook_entry *h = find_hook(hook_name);
+    if (!h)
+        return 0;
+
+    uint32_t last_ret = 0;
+
+    for (struct hook_node *n = h->head; n; n = n->next) {
+        last_ret = ccbpf_run_frame(n->prog, frame, frame_size);
+    }
+
+    return last_ret;
+}
+
+struct ccbpf_program *ccbpf_load_from_memory(const uint8_t *image, size_t len)
+{
+    if (!image || len < sizeof(struct CCBPF_Header))
+        return NULL;
+
+    const struct CCBPF_Header *hdr = (const struct CCBPF_Header *)image;
+    if (hdr->magic != CCBPF_MAGIC)
+        return NULL;
+
+    struct ccbpf_program *prog = heap_malloc(sizeof(*prog));
     if (!prog)
         return NULL;
+    memset(prog, 0, sizeof(*prog));
 
-    FILE *fp = fopen(path, "rb");
-    if (!fp) {
-        perror("ccbpf_load fopen");
-        free(prog);
+    if (hdr->code_offset + hdr->code_size > len) {
+        heap_free(prog);
         return NULL;
     }
 
-    struct CCBPF_Header hdr;
-    fread(&hdr, sizeof(hdr), 1, fp);
-
-    if (hdr.magic != CCBPF_MAGIC) {
-        fprintf(stderr, "Invalid CCBPF magic\n");
-        fclose(fp);
-        free(prog);
+    size_t insn_count = hdr->code_size / sizeof(struct bpf_insn);
+    prog->insns = heap_malloc(hdr->code_size);
+    if (!prog->insns) {
+        heap_free(prog);
         return NULL;
     }
-
-    // get code
-    fseek(fp, hdr.code_offset, SEEK_SET);
-    size_t insn_count = hdr.code_size / sizeof(struct bpf_insn);
-
-    prog->insns = malloc(hdr.code_size);
-    fread(prog->insns, sizeof(struct bpf_insn), insn_count, fp);
+    memcpy(prog->insns, image + hdr->code_offset, hdr->code_size);
     prog->insn_count = insn_count;
 
-    // get string (in data area)
     prog->string_count = 0;
-    prog->strings      = NULL;
+    prog->strings = NULL;
 
-    if (hdr.data_size > 0) {
-        fseek(fp, hdr.data_offset, SEEK_SET);
+    if (hdr->data_size > 0) {
+        if (hdr->data_offset + hdr->data_size > len) {
+            heap_free(prog->insns);
+            heap_free(prog);
+            return NULL;
+        }
+
+        const uint8_t *p = image + hdr->data_offset;
 
         int count = 0;
-        fread(&count, sizeof(int), 1, fp);
+        memcpy(&count, p, sizeof(int));
+        p += sizeof(int);
+
         prog->string_count = count;
+        prog->strings = heap_malloc(count * sizeof(char *));
+        if (!prog->strings) {
+            heap_free(prog->insns);
+            heap_free(prog);
+            return NULL;
+        }
+        memset(prog->strings, 0, count * sizeof(char *));
 
-        prog->strings = calloc(count, sizeof(char *));
         for (int i = 0; i < count; i++) {
-            int len = 0;
-            fread(&len, sizeof(int), 1, fp);
+            int slen = 0;
+            memcpy(&slen, p, sizeof(int));
+            p += sizeof(int);
 
-            char *buf = malloc(len);
-            fread(buf, 1, len, fp);
+            char *buf = heap_malloc(slen);
+            if (!buf) {
+                for (int j = 0; j < i; j++)
+                    heap_free(prog->strings[j]);
+                heap_free(prog->strings);
+                heap_free(prog->insns);
+                heap_free(prog);
+                return NULL;
+            }
+
+            memcpy(buf, p, slen);
+            p += slen;
 
             prog->strings[i] = buf;
         }
     }
 
-    fclose(fp);
-
-    prog->entry = hdr.entry;
+    prog->entry = hdr->entry;
 
     prog->map_count = CCBPF_MAX_MAPS;
     for (size_t i = 0; i < prog->map_count; i++) {
@@ -68,23 +172,30 @@ struct ccbpf_program *ccbpf_load(const char *path)
     return prog;
 }
 
-
 void ccbpf_unload(struct ccbpf_program *prog)
 {
     if (!prog)
         return;
 
     if (prog->insns)
-        free(prog->insns);
+        heap_free(prog->insns);
 
     if (prog->data)
-        free(prog->data);
+        heap_free(prog->data);
+
+    if (prog->strings) {
+        for (int i = 0; i < prog->string_count; i++) {
+            if (prog->strings[i])
+                heap_free(prog->strings[i]);
+        }
+        heap_free(prog->strings);
+    }
 
     for (size_t i = 0; i < prog->map_count; i++) {
         hashmap_destroy(&prog->maps[i]);
     }
 
-    free(prog);
+    heap_free(prog);
 }
 
 uint32_t ccbpf_run_frame(struct ccbpf_program *prog,

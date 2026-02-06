@@ -67,6 +67,7 @@ static inline uint32_t extract_long_raw(const void *p)
 
 
 #define CCBPF_STACK_SIZE 512
+uint8_t mem[CCBPF_STACK_SIZE];
 u_int ccbpf_vm_exec(struct ccbpf_program *prog,
                     struct bpf_insn *pc,
                     u_char *p,
@@ -75,8 +76,6 @@ u_int ccbpf_vm_exec(struct ccbpf_program *prog,
 {
     uint32_t A = 0, X = 0;
     int k;
-
-    uint8_t mem[CCBPF_STACK_SIZE];
     memset(mem, 0, sizeof(mem));
 
     if (pc == 0)

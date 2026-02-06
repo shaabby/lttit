@@ -73,6 +73,8 @@ void SystemClock_Config(void);
 #include "parser.h"
 #include "heap.h"
 #include "ir_lowering.h"
+#include "common.h"
+#include "ccbpf.h"
 #include <stdio.h>
 #include <memory.h>
 /*
@@ -289,27 +291,7 @@ int main(void)
 }
 */
 
-int cmd_mem()
-{
-    struct heap_stats st = heap_get_stats();
-    char buf[128];
-
-    int n = snprintf(buf, sizeof(buf),
-                     "heap_remain: %u\r\n"
-                     "heap_free_iter: %u\r\n"
-                     "heap_max_block: %u\r\n"
-                     "heap_free_blocks: %u\r\n",
-                     st.remain_size,
-                     st.free_size_iter,
-                     st.max_free_block,
-                     st.free_blocks);
-
-    if (n > 0)
-        printf(buf, n);
-
-    return 0;
-}
-
+/*
 int main(void)
 {
     const char *src =
@@ -346,9 +328,8 @@ int main(void)
     }
 
     printf("FS mounted OK!\r\n");
-
     printf("Starting shell...\r\n");
-    /*
+
     cmd_mem();
 
     compiler_init(16, (4*1024), (2*1024));
@@ -388,8 +369,6 @@ int main(void)
     uint8_t *image = ccbpf_pack_memory(prog, (size_t)prog_len, &image_len);
 
     printf("=== CCBPF IMAGE READY ===\n");
-    //printf("Image at %p, size = %u bytes\n", image, (unsigned)image_len);
-    printf("=== CCBPF IMAGE READY ===\n");
     printf("Image at %p, size = %u bytes\n", image, (unsigned)image_len);
 
     struct inode *ino;
@@ -402,41 +381,94 @@ int main(void)
     printf("fs_write wrote %d bytes\n", w);
     fs_close(ino);
     fs_sync();
-*/
-    struct inode *ino2;
-    if (fs_open("/prog.ccbpf", O_RDONLY, &ino2) != 0) {
-        printf("fs_open for read failed\n");
-        return 0;
-    }
-    uint32_t fsize = fs_get_size(ino2);
-    printf("file size on FS = %u bytes\n", fsize);
-
-    uint8_t *image2 = heap_malloc(fsize);
-    if (!image2) {
-        printf("heap_malloc for image2 failed\n");
-        fs_close(ino2);
-        return 0;
-    }
-    int r = fs_read(ino2, 0, image2, fsize);
-    printf("fs_read read %d bytes\n", r);
-
-    printf("=== FILE CONTENT (HEX) ===\n");
-    for (uint32_t i = 0; i < (uint32_t)r; i++) {
-        printf("%02X ", image2[i]);
-        if ((i + 1) % 16 == 0)
-            printf("\n");
-    }
-    printf("\n=== END OF FILE ===\n");
-
-    heap_free(image2);
-
-
     mg_region_print_pools(backend_region);
-    //bpf_builder_free(&b);
+    bpf_builder_free(&b);
 
     cmd_mem();
 
     return 0;
+}
+*/
+
+struct udp_hdr {
+    uint16_t sport;
+    uint16_t dport;
+    uint16_t len;
+    uint16_t checksum;
+};
+
+uint32_t udp_input(uint8_t *frame, size_t frame_size)
+{
+    uint32_t ret = hook_run("hook_udp_input", frame, frame_size);
+
+    struct udp_hdr *uh = (struct udp_hdr *)frame;
+    uint16_t sport = ntohs(uh->sport);
+    uint16_t dport = ntohs(uh->dport);
+
+    printf("udp_input: sport=%u dport=%u hook_ret=%u\n",
+           sport, dport, (unsigned)ret);
+
+    return ret;
+}
+
+int main()
+{
+    HAL_Init();
+    SystemClock_Config();
+    MX_GPIO_Init();
+    MX_USART1_UART_Init();
+
+    struct superblock sb;
+    fs_port_init();
+    if (fs_port_mount(&sb) != 0) {
+        printf("FS mount failed\n");
+        return 0;
+    }
+
+    struct inode *ino;
+    if (fs_open("/prog.ccbpf", O_RDONLY, &ino) != 0) {
+        printf("fs_open /prog.ccbpf failed\n");
+        return 0;
+    }
+
+    uint32_t fsize = fs_get_size(ino);
+    uint8_t *image = heap_malloc(fsize);
+    if (!image) {
+        printf("heap_malloc(%u) failed\n", (unsigned)fsize);
+        fs_close(ino);
+        return 0;
+    }
+
+    int r = fs_read(ino, 0, image, fsize);
+    fs_close(ino);
+    if (r != (int)fsize) {
+        printf("fs_read size mismatch: %d vs %u\n", r, (unsigned)fsize);
+        heap_free(image);
+        return 0;
+    }
+
+    if (hook_attach("hook_udp_input", image, fsize) != 0) {
+        printf("hook_attach failed\n");
+        heap_free(image);
+        return 0;
+    }
+    heap_free(image);
+
+    printf("hook_udp_input attached from /prog.ccbpf\n");
+
+    uint8_t pkt[64];
+    struct udp_hdr *uh = (struct udp_hdr *)pkt;
+
+    uh->sport = htons(10000);
+    uh->dport = htons(20000);
+    uh->len   = htons(20);
+    uh->checksum = 0;
+
+    uint32_t ret = udp_input(pkt, 20);
+    printf("udp_input() returned %u\n", (unsigned)ret);
+
+    while (1) {
+    }
 }
 
 /* USER CODE END 0 */
