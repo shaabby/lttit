@@ -40,6 +40,7 @@ message("Build type: " ${CMAKE_BUILD_TYPE})
 
 file(GLOB LIB_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/lttit/lib/source/*.c")
 file(GLOB MG_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/lttit/mg/source/*.c")
+file(GLOB FS_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/lttit/fs/source/*.c")
 file(GLOB COMPILER_BACKEND_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/lttit/ccBPF/compiler/backend/source/*.c")
 file(GLOB COMPILER_FRONTEND_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/lttit/ccBPF/compiler/frontend/source/*.c")
 file(GLOB COMPILER_IR_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/lttit/ccBPF/compiler/ir/source/*.c")
@@ -47,6 +48,7 @@ file(GLOB COMPILER_IR_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/lttit/ccBPF/compiler/
 add_executable(${CMAKE_PROJECT_NAME}
         ${LIB_SOURCES}
         ${MG_SOURCES}
+        ${FS_SOURCES}
         ${COMPILER_BACKEND_SOURCES}
         ${COMPILER_FRONTEND_SOURCES}
         ${COMPILER_IR_SOURCES}
@@ -56,16 +58,15 @@ add_executable(${CMAKE_PROJECT_NAME}
 include_directories(
         ${CMAKE_CURRENT_SOURCE_DIR}/lttit/lib/include
         ${CMAKE_CURRENT_SOURCE_DIR}/lttit/mg/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/lttit/fs/include
         ${CMAKE_CURRENT_SOURCE_DIR}/lttit/ccBPF/compiler/frontend/include/
         ${CMAKE_CURRENT_SOURCE_DIR}/lttit/ccBPF/compiler/backend/include/
         ${CMAKE_CURRENT_SOURCE_DIR}/lttit/ccBPF/compiler/ir/include/
 )
 
 
-target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE
-        RPC_METHODS_XDEF_FILE=\"${CMAKE_CURRENT_SOURCE_DIR}/lttit/CSC/ccrpc/include/rpc_methods_node.xdef\"
-)
-
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -ffunction-sections -fdata-sections")
+set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,--gc-sections")
 
 # Add STM32CubeMX generated sources
 add_subdirectory(cmake/stm32cubemx)

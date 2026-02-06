@@ -56,13 +56,13 @@ void SystemClock_Config(void);
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 #include "stm32f1xx_hal.h"
+#include "fs_port.h"
 /*
 #include "schedule.h"
 #include "sem.h"
 #include "ccnet.h"
 #include "common.h"
 #include "shell.h"
-#include "fs_port.h"
 #include "comm.h"
 #include "scp.h"
 #include "timer.h"
@@ -322,8 +322,6 @@ int main(void)
             "{\n"
             "    unsigned int x;\n"
             "    unsigned int y;\n"
-            "    unsigned int key;\n"
-            "    unsigned int val;\n"
             "    struct udp_hdr *uh;\n"
             "\n"
             "    uh = (struct udp_hdr *)&ctx[0];\n"
@@ -331,26 +329,8 @@ int main(void)
             "    print(x);\n"
             "    y = ntohs(uh->dport);\n"
             "    print(y);\n"
-            "\n"
-            "    key = x;\n"
-            "    val = y;\n"
-            "\n"
-            "    map_update(0, key, val);\n"
-            "\n"
-            "    val = map_lookup(0, key);\n"
-            "    print(val);\n"
-            "\n"
-            "    print(map_lookup(0, 9999));\n"
-            "    map_update(0, 1, 11);\n"
-            "    map_update(0, 2, 22);\n"
-            "    map_update(0, 3, 33);\n"
-            "    print(map_lookup(0, 1));\n"
-            "    print(map_lookup(0, 2));\n"
-            "    print(map_lookup(0, 3));\n"
-            "\n"
             "    return x + y;\n"
             "}\n";
-
 
     HAL_Init();
     SystemClock_Config();
@@ -358,9 +338,20 @@ int main(void)
     MX_GPIO_Init();
     MX_USART1_UART_Init();
 
+    struct superblock sb;
+    fs_port_init();
+
+    if (fs_port_mount(&sb) != 0) {
+        printf("FS mount after format failed!\r\n");
+    }
+
+    printf("FS mounted OK!\r\n");
+
+    printf("Starting shell...\r\n");
+    /*
     cmd_mem();
 
-    compiler_init(16, (9*1024), (4*1024));
+    compiler_init(16, (4*1024), (2*1024));
     lexer_set_input_buffer(src, strlen(src));
 
     struct lexer lex;
@@ -383,7 +374,7 @@ int main(void)
     mg_region_print_pools(ir_region);
 
     struct bpf_builder b;
-    bpf_builder_init(&b, (5*1024));
+    bpf_builder_init(&b, (3*1024));
 
     struct ir_mes im;
     ir_mes_get(&im);
@@ -395,18 +386,58 @@ int main(void)
 
     size_t image_len = 0;
     uint8_t *image = ccbpf_pack_memory(prog, (size_t)prog_len, &image_len);
+
+    printf("=== CCBPF IMAGE READY ===\n");
+    //printf("Image at %p, size = %u bytes\n", image, (unsigned)image_len);
     printf("=== CCBPF IMAGE READY ===\n");
     printf("Image at %p, size = %u bytes\n", image, (unsigned)image_len);
 
+    struct inode *ino;
+    if (fs_open("/prog.ccbpf", O_CREAT | O_RDWR, &ino) != 0) {
+        printf("fs_open for write failed\n");
+        return 0;
+    }
+
+    int w = fs_write(ino, 0, image, (uint32_t)image_len);
+    printf("fs_write wrote %d bytes\n", w);
+    fs_close(ino);
+    fs_sync();
+*/
+    struct inode *ino2;
+    if (fs_open("/prog.ccbpf", O_RDONLY, &ino2) != 0) {
+        printf("fs_open for read failed\n");
+        return 0;
+    }
+    uint32_t fsize = fs_get_size(ino2);
+    printf("file size on FS = %u bytes\n", fsize);
+
+    uint8_t *image2 = heap_malloc(fsize);
+    if (!image2) {
+        printf("heap_malloc for image2 failed\n");
+        fs_close(ino2);
+        return 0;
+    }
+    int r = fs_read(ino2, 0, image2, fsize);
+    printf("fs_read read %d bytes\n", r);
+
+    printf("=== FILE CONTENT (HEX) ===\n");
+    for (uint32_t i = 0; i < (uint32_t)r; i++) {
+        printf("%02X ", image2[i]);
+        if ((i + 1) % 16 == 0)
+            printf("\n");
+    }
+    printf("\n=== END OF FILE ===\n");
+
+    heap_free(image2);
+
+
     mg_region_print_pools(backend_region);
-    bpf_builder_free(&b);
+    //bpf_builder_free(&b);
 
     cmd_mem();
 
     return 0;
 }
-
-
 
 /* USER CODE END 0 */
 

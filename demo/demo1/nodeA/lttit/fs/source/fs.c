@@ -85,6 +85,11 @@ int inode_alloc(struct inode **out)
     if (!ino) return -1;
     ino->ino = (uint32_t)i;
     ino->din = DInodeArray[i];
+
+    for (int j = 0; j < NDIRECT; j++) {
+        ino->din.direct[j] = 0xFFFFFFFF;
+    }
+
     ino->refcnt = 1;
     *out = ino;
     return 0;
@@ -136,6 +141,7 @@ int fs_format(struct superblock *sb)
     uint32_t i;
     bitmap_init(BlockBitmap, BLOCK_BITMAP_COUNT);
     bitmap_init(InodeBitmap, INODE_BITMAP_COUNT);
+    memset(DInodeArray, 0xFF, sizeof(DInodeArray));
     sb->magic = 0x12345678;
     sb->block_size = g_bdev->block_size;
     sb->total_blocks = g_bdev->block_count;
@@ -495,6 +501,9 @@ int fs_open(const char *path, int flags, struct inode **out)
 
     newfile->din.mode = S_IFREG;
     newfile->din.size = 0;
+    for (int i = 0; i < NDIRECT; i++) {
+        newfile->din.direct[i] = 0xFFFFFFFF;
+    }
     newfile->din.direct[0] = (uint32_t)block_alloc();
 
     DInodeArray[newfile->ino] = newfile->din;
@@ -553,25 +562,43 @@ int fs_read(struct inode *inode, uint32_t off, void *buf, uint32_t len)
     return (int)total;
 }
 
-static uint8_t block_cache[FS_BLOCK_SIZE];
-
 int fs_write(struct inode *inode, uint32_t off, const void *buf, uint32_t len)
 {
     const uint8_t *src = (const uint8_t *)buf;
     uint32_t total = 0;
+    uint32_t old_size = inode->din.size;
+
+    uint8_t *block_cache = heap_malloc(FS_BLOCK_SIZE);
+    if (!block_cache)
+        return -1;
 
     while (total < len) {
-        uint32_t pos = off + total;
+        uint32_t pos       = off + total;
         uint32_t blk_index = pos / FS_BLOCK_SIZE;
         uint32_t blk_off   = pos % FS_BLOCK_SIZE;
 
         if (blk_index >= NDIRECT)
             break;
 
-        uint32_t blkno = inode->din.direct[blk_index];
+        uint32_t *pblk = &inode->din.direct[blk_index];
 
-        if (blkno == 0xFFFFFFFF)
-            break;
+        if (*pblk == 0xFFFFFFFF) {
+            int newblk = block_alloc();
+            if (newblk < 0) {
+                heap_free(block_cache);
+                return -1;
+            }
+            *pblk = (uint32_t)newblk;
+            memset(block_cache, 0, FS_BLOCK_SIZE);
+        } else {
+            if (g_bdev->read(g_bdev->ctx, *pblk, 0,
+                             block_cache, FS_BLOCK_SIZE) != 0) {
+                heap_free(block_cache);
+                return -1;
+            }
+        }
+
+        uint32_t blkno = *pblk;
 
         uint32_t chunk = FS_BLOCK_SIZE - blk_off;
         if (chunk > len - total)
@@ -579,16 +606,27 @@ int fs_write(struct inode *inode, uint32_t off, const void *buf, uint32_t len)
 
         memcpy(block_cache + blk_off, src + total, chunk);
 
-        if (g_bdev->erase(g_bdev->ctx, blkno) != 0)
+        if (g_bdev->erase(g_bdev->ctx, blkno) != 0) {
+            heap_free(block_cache);
             return -1;
+        }
 
-        if (g_bdev->write(g_bdev->ctx, blkno, 0, block_cache, FS_BLOCK_SIZE) != 0)
+        if (g_bdev->write(g_bdev->ctx, blkno, 0,
+                          block_cache, FS_BLOCK_SIZE) != 0) {
+            heap_free(block_cache);
             return -1;
+        }
 
         total += chunk;
     }
-    inode->din.size = total;
+
+    uint32_t new_end = off + total;
+    if (new_end > old_size)
+        inode->din.size = new_end;
+
     DInodeArray[inode->ino] = inode->din;
+
+    heap_free(block_cache);
 
     return (int)total;
 }
