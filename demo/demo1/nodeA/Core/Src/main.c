@@ -343,7 +343,7 @@ int main(void)
     cmd_mem();
     heap_debug_dump_leaks();
 
-    compiler_init(10, (5*1024));
+    compiler_init(10, (5*1024), (3*1024));
     lexer_set_input_buffer(src, strlen(src));
 
     struct lexer lex;
@@ -360,9 +360,9 @@ int main(void)
 
     cmd_mem();
     heap_debug_dump_leaks();
-
     mg_region_print_pools(frontend_region);
     mg_region_print_pools(longterm_region);
+    mg_region_print_pools(ir_region);
 
     return 0;
 }

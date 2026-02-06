@@ -13,7 +13,7 @@
 #define MG_POOL_BLOCKS_MEDIUM    2
 #define MG_POOL_BLOCKS_LARGE     1
 
-#define MG_BLOCK_THRESHOLD_SMALL 32
+#define MG_BLOCK_THRESHOLD_SMALL 64
 #define MG_BLOCK_THRESHOLD_MED   128
 
 struct mg_pool_node {

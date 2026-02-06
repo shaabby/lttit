@@ -9,6 +9,8 @@
 
 mg_region_handle frontend_region;
 mg_region_handle longterm_region;
+mg_region_handle ir_region;
+
 static const char *lexer_buf = NULL;
 static size_t lexer_len = 0;
 static size_t lexer_pos = 0;
@@ -93,11 +95,11 @@ void lexer_init(struct lexer *lex)
     lexer_reserve(lex, "struct", STRUCT);
 }
 
-
-void compiler_init(uint8_t region_bit, uint32_t cap)
+void compiler_init(uint8_t region_bit, uint32_t cap, uint32_t ir_cap)
 {
     frontend_region = mg_region_create_pool(region_bit);
     longterm_region = mg_region_create_bump(cap);
+    ir_region = mg_region_create_bump(ir_cap);
     init_stmt_singletons();
     init_constant_singletons();
 }
