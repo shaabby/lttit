@@ -1,4 +1,4 @@
-RPC_METHOD_PROVIDER(
+RPC_METHOD_REQUEST(
     fs_operation,
     "fs.operation",
     PARAMS(
@@ -10,5 +10,18 @@ RPC_METHOD_PROVIDER(
         FIELD(bytes, read_data);
         FIELD(u32, read_len);
         FIELD(u32, status);
+    )
+)
+
+RPC_METHOD_REQUEST(
+    bpf_load_and_attach,
+    "bpf.load_and_attach",
+    PARAMS(
+        FIELD(string, hook_name);
+        FIELD(bytes,  image);
+    ),
+    RESULTS(
+        FIELD(u32, status);
+        FIELD(string, message);
     )
 )

@@ -450,7 +450,7 @@ int cmd_bpf_hook(int argc, char **argv)
 
     printf("[NodeA] calling bpf.load_and_attach...\n");
 
-    int st = rpc_call_bpf_load_and_attach(&in, &out, 2000);
+    int st = rpc_call_bpf_load_and_attach(&in, &out, 10000);
 
     heap_free(image);
 

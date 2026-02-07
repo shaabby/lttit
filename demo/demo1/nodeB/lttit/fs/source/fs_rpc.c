@@ -5,6 +5,7 @@
 #include "rpc_gen.h"
 #include "fs_rpc.h"
 #include "heap.h"
+#include "ccbpf.h"
 #include <string.h>
 
 int fs_operation_handler(const struct rpc_param_fs_operation *in,
@@ -59,5 +60,31 @@ int fs_operation_handler(const struct rpc_param_fs_operation *in,
 
     out->status = fs_close(ino);
 
+    return 0;
+}
+
+int bpf_load_and_attach_handler(const struct rpc_param_bpf_load_and_attach *in,
+                                struct rpc_result_bpf_load_and_attach *out)
+{
+    printf("NodeB: bpf_load_and_attach(hook=%s, image_len=%u)\n",
+           in->hook_name ? in->hook_name : "(null)",
+           (unsigned)in->image.len);
+
+    if (!in->hook_name || !in->image.ptr || in->image.len == 0) {
+        out->status  = -1;
+        out->message = "invalid parameters";
+        return 0;
+    }
+
+    int rc = hook_attach(in->hook_name, in->image.ptr, in->image.len);
+    if (rc != 0) {
+        printf("hook_attach failed: rc=%d\n", rc);
+        out->status  = rc;
+        out->message = "hook_attach failed";
+        return 0;
+    }
+
+    out->status  = 0;
+    out->message = "ok";
     return 0;
 }

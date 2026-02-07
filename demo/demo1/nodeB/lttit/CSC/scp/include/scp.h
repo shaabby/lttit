@@ -11,7 +11,7 @@
 #define SCP_RECV_LIMIT 0xFFFF
 #define SEND_WIN_INIT 0xFFFF
 #define RECV_WIN_INIT     0xFFFF
-#define MTU 256
+#define MTU 180
 
 
 struct scp_transport_class {

@@ -42,21 +42,21 @@
  */
 
 #include "cbpf.h"
-#include <arpa/inet.h>
+#include "common.h"
 #include <stdlib.h>
 #include <memory.h>
 #include <stdio.h>
 
-static inline u_short extract_short_raw(const void *p)
+static inline uint16_t extract_short_raw(const void *p)
 {
-    u_short v;
+    uint16_t v;
     memcpy(&v, p, sizeof(v));
     return v;
 }
 
-static inline u_long extract_long_raw(const void *p)
+static inline uint32_t extract_long_raw(const void *p)
 {
-    u_long v;
+    uint32_t v;
     memcpy(&v, p, sizeof(v));
     return v;
 }
@@ -67,16 +67,15 @@ static inline u_long extract_long_raw(const void *p)
 
 
 #define CCBPF_STACK_SIZE 512
+uint8_t mem[CCBPF_STACK_SIZE];
 u_int ccbpf_vm_exec(struct ccbpf_program *prog,
                     struct bpf_insn *pc,
                     u_char *p,
                     u_int wirelen,
                     u_int buflen)
 {
-    u_long A = 0, X = 0;
+    uint32_t A = 0, X = 0;
     int k;
-
-    uint8_t mem[CCBPF_STACK_SIZE];
     memset(mem, 0, sizeof(mem));
 
     if (pc == 0)
@@ -163,33 +162,33 @@ u_int ccbpf_vm_exec(struct ccbpf_program *prog,
 
         case BPF_LD | BPF_MEM: {
             size_t off = pc->k; 
-            if (off + sizeof(u_long) > CCBPF_STACK_SIZE)
+            if (off + sizeof(uint32_t) > CCBPF_STACK_SIZE)
                 return 0;
-            memcpy(&A, &mem[off], sizeof(u_long));
+            memcpy(&A, &mem[off], sizeof(uint32_t));
             continue;
         }
 
         case BPF_LDX | BPF_MEM: {
             size_t off = pc->k;  
-            if (off + sizeof(u_long) > CCBPF_STACK_SIZE)
+            if (off + sizeof(uint32_t) > CCBPF_STACK_SIZE)
                 return 0;
-            memcpy(&X, &mem[off], sizeof(u_long));
+            memcpy(&X, &mem[off], sizeof(uint32_t));
             continue;
         }
 
         case BPF_ST: {
             size_t off = pc->k; 
-            if (off + sizeof(u_long) > CCBPF_STACK_SIZE)
+            if (off + sizeof(uint32_t) > CCBPF_STACK_SIZE)
                 return 0;
-            memcpy(&mem[off], &A, sizeof(u_long));
+            memcpy(&mem[off], &A, sizeof(uint32_t));
             continue;
         }
 
         case BPF_STX: {
             size_t off = pc->k; 
-            if (off + sizeof(u_long) > CCBPF_STACK_SIZE)
+            if (off + sizeof(uint32_t) > CCBPF_STACK_SIZE)
                 return 0;
-            memcpy(&mem[off], &X, sizeof(u_long));
+            memcpy(&mem[off], &X, sizeof(uint32_t));
             continue;
         }
 
@@ -312,10 +311,10 @@ u_int ccbpf_vm_exec(struct ccbpf_program *prog,
         case BPF_MISC | BPF_COP:
             switch (pc->k) {
             case NATIVE_NTOHL:
-                A = ntohl((u_long)A);
+                A = ntohl((uint32_t)A);
                 break;
             case NATIVE_NTOHS:
-                A = ntohs((u_short)A);
+                A = ntohs((uint16_t)A);
                 break;
             case NATIVE_PRINTF: {
                 uint64_t val = A;
@@ -369,7 +368,7 @@ u_int ccbpf_vm_exec(struct ccbpf_program *prog,
 			                                (void *)(uintptr_t)key);
 			    uint32_t val = val_ptr ? (uint32_t)(uintptr_t)val_ptr : 0;
 
-			    A = (u_long)val;
+			    A = (uint32_t)val;
    			    break;
 			}
 

@@ -9,6 +9,7 @@
 #include "link_list.h"
 #include "math.h"
 #include "timer.h"
+#include "common.h"
 #include <stdio.h>
 
 #define SCHED_DEBUG 0
@@ -541,8 +542,41 @@ void rtos_stack_used(TaskHandle_t tcb)
         tcb->max_used_mem = used;
 }
 
+
+struct udp_hdr {
+    uint16_t sport;
+    uint16_t dport;
+    uint16_t len;
+    uint16_t checksum;
+};
+
+uint32_t udp_input(uint8_t *frame, size_t frame_size)
+{
+    uint32_t ret = hook_run("hook_udp_input", frame, frame_size);
+/*
+    struct udp_hdr *uh = (struct udp_hdr *)frame;
+    uint16_t sport = ntohs(uh->sport);
+    uint16_t dport = ntohs(uh->dport);
+
+    printf("udp_input: sport=%u dport=%u hook_ret=%u\n",
+           sport, dport, (unsigned)ret);
+*/
+    return ret;
+}
+
 void task_switch_context(void)
 {
+    uint8_t pkt[64];
+    struct udp_hdr *uh = (struct udp_hdr *)pkt;
+
+    uh->sport = htons(10000);
+    uh->dport = htons(20000);
+    uh->len   = htons(20);
+    uh->checksum = 0;
+
+    uint32_t ret = udp_input(pkt, 20);
+    //printf("udp_input() returned %u\n", (unsigned)ret);
+
     TaskHandle_t old = schedule_currentTCB;
     TaskHandle_t next = NULL;
 

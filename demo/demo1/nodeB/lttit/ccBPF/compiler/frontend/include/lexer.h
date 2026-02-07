@@ -2,12 +2,15 @@
 #define LEXER_H
 
 #include "hashmap.h"
+#include "mg_alloc.h"
+
+extern mg_region_handle frontend_region;
+extern mg_region_handle longterm_region;
+extern mg_region_handle ir_region;
 
 enum tag {
     AND = 256,     // &&
-    BASIC,         // int, float, bool, char
-    BREAK,
-    DO,
+    BASIC,         // int, short, bool, char
     ELSE,
     AND_BIT,       // & 
     OR_BIT,        // | 
@@ -23,12 +26,10 @@ enum tag {
     NE,            // !=
     NUM,           // integer literal
     OR,            // ||
-    REAL,          // float literal
     STRING,
 
     TEMP,
     TRUE,
-    WHILE,
     ARROW,
 
     NOT,
@@ -80,9 +81,11 @@ struct lexer {
     struct hashmap words;
 };
 
+void compiler_init(uint8_t region_bit, uint32_t cap, uint32_t ir_cap);
 void lexer_init(struct lexer *lex);
+void frontend_destroy(struct lexer *lex);
 struct lexer_token *lexer_scan(struct lexer *lex);
 void lexer_reserve(struct lexer *lex, const char *lexeme, int tag);
-void lexer_set_input(const char *filename);  
+void lexer_set_input_buffer(const char *buf, size_t len);
 
 #endif

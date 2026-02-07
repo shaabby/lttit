@@ -49,7 +49,4 @@ int ccnet_register_node_link(uint16_t node_id, ccnet_link_t fun);
 int ccnet_output(void *ctx, void *data, int len);
 int ccnet_input(void *ctx, void *data, int len);
 
-/* stream byte feed */
-void ccnet_feed_byte(uint8_t b);
-
 #endif

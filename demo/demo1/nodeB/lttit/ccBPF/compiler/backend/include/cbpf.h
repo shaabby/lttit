@@ -43,7 +43,10 @@
 #define CBPF_H
 
 #include "bpf_types.h"
-
+#include "bpf_format.h"
+#include <stdint.h>
+#include <stdio.h>
+#include "hashmap.h"
 /*
  * The instruction encondings.
  */
@@ -107,10 +110,28 @@
  * The instruction data structure.
  */
 struct bpf_insn {
-	u_short	code;
-	u_char 	jt;
-	u_char 	jf;
-	long	k;
+    u_short	code;
+    u_char 	jt;
+    u_char 	jf;
+    long	k;
+};
+
+#define CCBPF_MAX_MAPS 8
+
+struct ccbpf_program {
+    struct bpf_insn *insns; //.text
+    size_t insn_count;
+
+    uint8_t *data;     //.data or .radata
+    size_t data_size;
+
+    struct hashmap maps[CCBPF_MAX_MAPS];
+    size_t map_count;
+
+    uint32_t entry;
+
+    int string_count;
+    char **strings;
 };
 
 /*
@@ -123,5 +144,11 @@ struct bpf_insn {
  * Number of scratch memory words (for BPF_LD|BPF_MEM and BPF_ST).
  */
 #define BPF_MEMWORDS 64
-	
+
+u_int ccbpf_vm_exec(struct ccbpf_program *prog,
+                    struct bpf_insn *pc,
+                    u_char *p,
+                    u_int wirelen,
+                    u_int buflen);
+
 #endif

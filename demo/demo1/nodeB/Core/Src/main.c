@@ -178,6 +178,8 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 
 TaskHandle_t t_shell;
 
+static uint8_t buf[512];
+int a = 0;
 /* Parse UART frame, feed into ccnet (which feeds SCP) */
 void shell_process_remote(void)
 {
@@ -207,7 +209,15 @@ void shell_process_remote(void)
         uint16_t packet_len = ntohs(ch->len) + sizeof(struct ccnet_hdr);
 
         /* Feed raw ccnet packet into stack (upper layer is SCP now) */
+
         ccnet_input(NULL, (void *)packet, packet_len);
+        int rn = scp_recv(SCP_FD_B2A, buf + a, sizeof(buf));
+        if (rn > 0) {
+            a += rn;
+            if (a >= 400) {
+                rpc_on_data(rt, buf, (size_t)a);
+            }
+        }
     }
 }
 
@@ -217,6 +227,7 @@ void task_shell_rx(void *ctx)
     (void)ctx;
     while (1) {
         task_enter();
+
         if (semaphore_take(sem, 10) == true) {
             shell_process_remote();
         }
@@ -227,14 +238,14 @@ void task_shell_rx(void *ctx)
 /* Task: read from SCP stream and feed shell */
 TaskHandle_t t_scp_shell;
 
-static uint8_t buf[256];
 static void task_scp_shell(void *ctx)
 {
     (void)ctx;
-
+    int a = 0;
+    memset(buf, 0, sizeof(buf));
     while (1) {
         task_enter();
-        int rn = scp_recv(SCP_FD_B2A, buf, sizeof(buf));
+        int rn = scp_recv(SCP_FD_B2A, buf + a, sizeof(buf));
         if (rn > 0) {
             rpc_on_data(rt, buf, (size_t)rn);
             shell_on_message(buf, (size_t)rn);
@@ -292,6 +303,7 @@ void APP(void)
                                   NULL);
 
     rpc_bind_transport("fs.operation", rt);
+    rpc_bind_transport("bpf.load_and_attach", rt);
 
     struct superblock sb;
     fs_port_init();
@@ -310,10 +322,10 @@ void APP(void)
     timer_create(timer_excu, 10, run);
 
     /* UART¡úccnet/SCP feeder (BE) */
-    task_create(task_shell_rx, 512, NULL, 0, 12, 0, &t_shell);
+    task_create(task_shell_rx, 1024, NULL, 0, 12, 0, &t_shell);
 
     /* SCP¡úshell bridge (BE) */
-    task_create(task_scp_shell, 1024, NULL, 0, 10, 0, &t_scp_shell);
+    //task_create(task_scp_shell, 1024, NULL, 0, 10, 0, &t_scp_shell);
 }
 
 int main(void)

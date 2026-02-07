@@ -6,8 +6,6 @@
 #include "rpc_tlv.h"
 #include "rpc.h"
 
-#define RPC_WIRE_BUF_SIZE 256
-
 typedef char*    rpc_string_t;
 typedef uint32_t rpc_u32_t;
 typedef int32_t  rpc_i32_t;

@@ -1,106 +1,83 @@
-/*
- * MIT License
- *
- * Copyright (c) 2024 skaiui2
-
- * Permission is hereby granted, free of charge, to any person obtaining a copy
- * of this software and associated documentation files (the "Software"), to deal
- * in the Software without restriction, including without limitation the rights
- * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
- * copies of the Software, and to permit persons to whom the Software is
- * furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included in all
- * copies or substantial portions of the Software.
-
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
- * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
- * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
- * SOFTWARE.
- *  https://github.com/skaiui2/SKRTOS_sparrow
- */
-
 #include "membit.h"
 #include "heap.h"
 
-__attribute__( ( always_inline ) ) inline uint8_t log2_low_ctz(uint32_t Table)
+#define ALIGN_BYTE 0x07
+
+static const size_t head_size =
+        (sizeof(struct membit_pool) + ALIGN_BYTE) & ~ALIGN_BYTE;
+
+static inline uint8_t lowbit_index(uint32_t v)
 {
-    return __builtin_ctz(Table);
+    return __builtin_ctz(v);
 }
 
-
-Class(PoolHead)
+membit_pool_t membit_create(uint16_t size, uint8_t count)
 {
-    uint32_t bitmask;
-    size_t BlockSize;
-};
+    struct membit_pool *p;
+    size_t total;
 
-static const size_t HeadStructSize = (sizeof(PoolHead) + (size_t)(alignment_byte)) &~(alignment_byte);
-
-
-PoolHeadHandle mempool_creat(uint16_t size,uint8_t amount)
-{
-    PoolHead *ThePool;
-    size_t all_size;
-    if (size & alignment_byte) {
-        size += alignment_byte;
-        size &= (~alignment_byte);
-    }
-    all_size = size * amount;
-    all_size += HeadStructSize;
-
-    ThePool = heap_malloc(all_size);
-    if (ThePool == NULL){
-        return false;
+    if (size & ALIGN_BYTE) {
+        size += ALIGN_BYTE;
+        size &= ~ALIGN_BYTE;
     }
 
-    ThePool->BlockSize = size;
-    ThePool->bitmask = 0;
-    ThePool->bitmask |= ((1 << amount) - 1);
-    return ThePool;
+    if (count > 32)
+        count = 32;
+
+    total = head_size + (size_t)size * count;
+    p = heap_malloc(total);
+    if (!p)
+        return NULL;
+
+    p->block_size = size;
+    p->count = count;
+    p->bitmask = (count == 32) ? 0xFFFFFFFFu : ((1u << count) - 1u);
+
+    return p;
 }
 
-
-void *mempool_alloc(PoolHeadHandle ThePool)
+void *membit_alloc(membit_pool_t pool)
 {
-    void *address = NULL;
-    uint8_t index;
-    if (!ThePool) {
-        return address;
-    }
+    uint8_t idx;
+    uint8_t *base;
 
-    if (!ThePool->bitmask) {
-        return address;
-    }
+    if (!pool || !pool->bitmask)
+        return NULL;
 
-    index = log2_low_ctz(ThePool->bitmask);
-    ThePool->bitmask &= ~(1 << index);
-    address = (void *)((size_t)ThePool + HeadStructSize);
-    address = address + (ThePool->BlockSize * index);
+    idx = lowbit_index(pool->bitmask);
+    pool->bitmask &= ~(1u << idx);
 
-    return address;
+    base = (uint8_t *)pool + head_size;
+    return base + pool->block_size * idx;
 }
 
-
-
-void mempool_free(PoolHeadHandle ThePool, void *address)
+void membit_free(membit_pool_t pool, void *addr)
 {
-    uint8_t index;
-    if (!address) {
+    size_t off;
+    uint8_t idx;
+
+    if (!pool || !addr)
         return;
-    }
 
-    index = ((size_t)address - (size_t)ThePool - (size_t)HeadStructSize) / (size_t)ThePool->BlockSize;
-    ThePool->bitmask |= (1 << index);
+    off = (size_t)addr - ((size_t)pool + head_size);
+    idx = off / pool->block_size;
+
+    pool->bitmask |= (1u << idx);
 }
 
-void mempool_delete(PoolHeadHandle ThePool)
+void membit_destroy(membit_pool_t pool)
 {
-    if (!ThePool) {
+    if (pool)
+        heap_free(pool);
+}
+
+void membit_reset(membit_pool_t pool)
+{
+    if (!pool)
         return;
-    }
-    heap_free(ThePool);
+
+    if (pool->count == 32)
+        pool->bitmask = 0xFFFFFFFFu;
+    else
+        pool->bitmask = (1u << pool->count) - 1u;
 }

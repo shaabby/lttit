@@ -1,41 +1,21 @@
-/*
- * MIT License
- *
- * Copyright (c) 2024 skaiui2
+#ifndef _MEMBIT_H
+#define _MEMBIT_H
 
- * Permission is hereby granted, free of charge, to any person obtaining a copy
- * of this software and associated documentation files (the "Software"), to deal
- * in the Software without restriction, including without limitation the rights
- * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
- * copies of the Software, and to permit persons to whom the Software is
- * furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included in all
- * copies or substantial portions of the Software.
+#include <stdint.h>
+#include <stddef.h>
 
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
- * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
- * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
- * SOFTWARE.
- *  https://github.com/skaiui2/SKRTOS_sparrow
- */
+struct membit_pool {
+    uint32_t bitmask;
+    size_t block_size;
+    uint8_t count;
+};
 
-#ifndef MEMBIT_H
-#define MEMBIT_H
-#include "class.h"
+typedef struct membit_pool *membit_pool_t;
 
-typedef struct PoolHead *PoolHeadHandle;
-
-PoolHeadHandle mempool_creat(uint16_t size,uint8_t amount);
-void *mempool_alloc(PoolHeadHandle ThePool);
-void mempool_free(PoolHeadHandle ThePool, void *address);
-void mempool_delete(PoolHeadHandle ThePool);
-
-
-
-
+membit_pool_t membit_create(uint16_t size, uint8_t count);
+void *membit_alloc(membit_pool_t pool);
+void membit_free(membit_pool_t pool, void *addr);
+void membit_destroy(membit_pool_t pool);
+void membit_reset(membit_pool_t pool);
 
 #endif

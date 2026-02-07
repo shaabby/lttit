@@ -1,12 +1,26 @@
 #include "parser.h"
 #include "bpf_types.h"
 #include "inter.h"
+#include "mg_alloc.h"
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
 
+#define COMPILER_DEBUG_ENABLED 0
+
+static void compiler_debug(const char *fmt, ...)
+{
+#if COMPILER_DEBUG_ENABLED
+    va_list ap;
+    va_start(ap, fmt);
+    vprintf(fmt, ap);
+    va_end(ap);
+#else
+    (void)fmt;
+#endif
+}
+
 extern struct Type     *Type_Int;
-extern struct Type     *Type_Float;
 extern struct Type     *Type_Bool;
 extern struct Type     *Type_Byte;
 extern struct Type     *Type_Short;
@@ -16,87 +30,75 @@ extern struct Constant *Constant_false;
 static struct Type *basic_type_from_token(struct lexer_token *tok)
 {
     if (!tok || !tok->lexeme) return NULL;
-
     if (strcmp(tok->lexeme, "int") == 0)   return Type_Int;
-    if (strcmp(tok->lexeme, "float") == 0) return Type_Float;
     if (strcmp(tok->lexeme, "bool") == 0)  return Type_Bool;
     if (strcmp(tok->lexeme, "char") == 0)  return Type_Byte;
-    if (strcmp(tok->lexeme, "short") == 0)  return Type_Short;
-
+    if (strcmp(tok->lexeme, "short") == 0) return Type_Short;
     return NULL;
 }
 
-
 char *token_to_string(struct lexer_token *tok)
 {
-    if (!tok) return strdup("<?>");
-
-    if (tok->lexeme)
-        return strdup(tok->lexeme);
+    if (!tok) return region_strdup("<?>");
+    if (tok->lexeme) return region_strdup(tok->lexeme);
 
     if (tok->tag == NUM) {
-        char *buf = malloc(32);
+        char *buf = mg_region_alloc(longterm_region, 32);
         snprintf(buf, 32, "%d", tok->int_val);
         return buf;
     }
 
-    if (tok->tag == REAL) {
-        char *buf = malloc(32);
-        snprintf(buf, 32, "%f", tok->real_val);
-        return buf;
-    }
-
     switch (tok->tag) {
-    case AND_BIT:    return strdup("&");
-    case OR_BIT:     return strdup("|");
-    case LT:         return strdup("<");
-    case GT:         return strdup(">");
-    case PLUS:       return strdup("+");
-    case MINUS:      return strdup("-");
-    case STAR:       return strdup("*");
-    case SLASH:      return strdup("/");
-    case MOD:        return strdup("%");
-    case ASSIGN:     return strdup("=");
-    case ADD_ASSIGN: return strdup("+=");
-    case SUB_ASSIGN: return strdup("-=");
-    case MUL_ASSIGN: return strdup("*=");
-    case DIV_ASSIGN: return strdup("/=");
-    case ARROW:      return strdup("->");
-    case INC:        return strdup("++");
-    case DEC:        return strdup("--");
-    case EQ:         return strdup("==");
-    case NE:         return strdup("!=");
-    case LE:         return strdup("<=");
-    case GE:         return strdup(">=");
-    case AND:        return strdup("&&");
-    case OR:         return strdup("||");
-    case LPAREN:     return strdup("(");
-    case RPAREN:     return strdup(")");
-    case LBRACE:     return strdup("{");
-    case RBRACE:     return strdup("}");
-    case LBRACKET:   return strdup("[");
-    case RBRACKET:   return strdup("]");
-    case COMMA:      return strdup(",");
-    case SEMICOLON:  return strdup(";");
-    case DOT:        return strdup(".");
-    default: {
-        char *buf = malloc(16);
-        snprintf(buf, 16, "#%d", tok->tag);
-        return buf;
-    }
+        case AND_BIT:    return region_strdup("&");
+        case OR_BIT:     return region_strdup("|");
+        case LT:         return region_strdup("<");
+        case GT:         return region_strdup(">");
+        case PLUS:       return region_strdup("+");
+        case MINUS:      return region_strdup("-");
+        case STAR:       return region_strdup("*");
+        case SLASH:      return region_strdup("/");
+        case MOD:        return region_strdup("%");
+        case ASSIGN:     return region_strdup("=");
+        case ADD_ASSIGN: return region_strdup("+=");
+        case SUB_ASSIGN: return region_strdup("-=");
+        case MUL_ASSIGN: return region_strdup("*=");
+        case DIV_ASSIGN: return region_strdup("/=");
+        case ARROW:      return region_strdup("->");
+        case INC:        return region_strdup("++");
+        case DEC:        return region_strdup("--");
+        case EQ:         return region_strdup("==");
+        case NE:         return region_strdup("!=");
+        case LE:         return region_strdup("<=");
+        case GE:         return region_strdup(">=");
+        case AND:        return region_strdup("&&");
+        case OR:         return region_strdup("||");
+        case LPAREN:     return region_strdup("(");
+        case RPAREN:     return region_strdup(")");
+        case LBRACE:     return region_strdup("{");
+        case RBRACE:     return region_strdup("}");
+        case LBRACKET:   return region_strdup("[");
+        case RBRACKET:   return region_strdup("]");
+        case COMMA:      return region_strdup(",");
+        case SEMICOLON:  return region_strdup(";");
+        case DOT:        return region_strdup(".");
+        default: {
+            char *buf = mg_region_alloc(longterm_region, 16);
+            snprintf(buf, 16, "#%d", tok->tag);
+            return buf;
+        }
     }
 }
 
 static void parser_move(struct Parser *p)
 {
     p->look = lexer_scan(p->lex);
-    if (p->look) { 
-        char *s = token_to_string(p->look); 
-        printf("TOKEN: tag=%d, str=%s\n", p->look->tag, s); 
-        free(s); 
+#if COMPILER_DEBUG_ENABLED
+    if (p->look) {
+        char *s = token_to_string(p->look);
+        compiler_debug("TOKEN: tag=%d, str=%s\n", p->look->tag, s);
     }
+#endif
 }
-
 
 static void parser_error(struct Parser *p, const char *msg)
 {
@@ -114,14 +116,13 @@ static void parser_match(struct Parser *p, int tag)
 
 struct Parser *parser_new(struct lexer *lex)
 {
-    struct Parser *p = malloc(sizeof(struct Parser));
+    struct Parser *p = mg_region_alloc(longterm_region, sizeof(struct Parser));
     p->lex  = lex;
-    p->top = env_new(NULL);
+    p->top  = env_new(NULL);
     p->used = 0;
     parser_move(p);
     return p;
 }
-
 
 static void parser_struct_decl(struct Parser *p)
 {
@@ -130,7 +131,7 @@ static void parser_struct_decl(struct Parser *p)
     if (p->look->tag != ID || !p->look->lexeme)
         parser_error(p, "expected struct name");
 
-    char *name = strdup(p->look->lexeme);
+    char *name = region_strdup(p->look->lexeme);
     parser_match(p, ID);
 
     struct StructType *st = struct_new();
@@ -144,11 +145,12 @@ static void parser_struct_decl(struct Parser *p)
         if (p->look->tag != ID || !p->look->lexeme)
             parser_error(p, "expected field name");
 
-        char *fname = strdup(p->look->lexeme);
+        char *fname = region_strdup(p->look->lexeme);
         parser_match(p, ID);
         parser_match(p, SEMICOLON);
 
-        struct StructFieldInfo *fi = malloc(sizeof(*fi));
+        struct StructFieldInfo *fi =
+                mg_region_alloc(longterm_region, sizeof(*fi));
         fi->offset = offset;
         fi->type   = ft;
 
@@ -167,13 +169,12 @@ static void parser_struct_decl(struct Parser *p)
 
 struct Access *parser_field(struct Parser *p, struct Expr *base, struct lexer_token *field_tok)
 {
-    /* id-based struct pointer */
     if (base->base.tag == TAG_ID) {
         struct Id *id = (struct Id *)base;
 
         if (id->base_offset >= 0 && id->st != NULL) {
             struct StructFieldInfo *fi =
-                hashmap_get(&id->st->fields, field_tok->lexeme);
+                    hashmap_get(&id->st->fields, field_tok->lexeme);
             if (!fi)
                 parser_error(p, "unknown field in struct");
 
@@ -189,7 +190,6 @@ struct Access *parser_field(struct Parser *p, struct Expr *base, struct lexer_to
         }
     }
 
-    /* ctx_ptr->field */
     if (base->base.tag == TAG_CTX_PTR) {
         struct CtxPtrExpr *pp = (struct CtxPtrExpr *)base;
 
@@ -197,7 +197,7 @@ struct Access *parser_field(struct Parser *p, struct Expr *base, struct lexer_to
             parser_error(p, "ctx pointer missing struct type");
 
         struct StructFieldInfo *fi =
-            hashmap_get(&pp->st->fields, field_tok->lexeme);
+                hashmap_get(&pp->st->fields, field_tok->lexeme);
         if (!fi)
             parser_error(p, "unknown field in struct");
 
@@ -212,7 +212,53 @@ struct Access *parser_field(struct Parser *p, struct Expr *base, struct lexer_to
     return NULL;
 }
 
-static struct Stmt *parse_hook_function(struct Parser *p)
+struct Stmt *parser_block(struct Parser *p)
+{
+    parser_match(p, LBRACE);
+    struct Env *saved = p->top;
+    p->top = env_new(p->top);
+    parser_decls(p);
+    struct Stmt *s = parser_stmts(p);
+    parser_match(p, RBRACE);
+    p->top = saved;
+
+    compiler_debug("[PP] block root stmt=%p tag=%d\n",
+                   (void *)s,
+                   s ? s->base.tag : -1);
+
+    return s;
+}
+
+static void parser_block_gen(struct Parser *p, int begin, int after)
+{
+    parser_match(p, LBRACE);
+    struct Env *saved = p->top;
+    p->top = env_new(p->top);
+
+    parser_decls(p);
+
+    while (p->look && p->look->tag != RBRACE && p->look->tag != 0) {
+        struct Stmt *s = parser_stmt(p);
+
+        compiler_debug("[PP] block stmt=%p tag=%d\n",
+                       (void *)s,
+                       s ? s->base.tag : -1);
+
+        if (s && s->base.gen) {
+            s->base.gen((struct Node *)s, begin, after);
+        }
+        /* reuse or not reuse, this is a question.
+        mg_region_reset(frontend_region); or?
+        mg_region_destroy(frontend_region);
+        frontend_region = mg_region_create_pool(16);
+         */
+    }
+
+    parser_match(p, RBRACE);
+    p->top = saved;
+}
+
+static void parse_hook_function_gen(struct Parser *p, int begin, int after)
 {
     if (p->look->tag != BASIC || strcmp(p->look->lexeme, "int") != 0)
         parser_error(p, "program must start with int hook(...)");
@@ -246,59 +292,32 @@ static struct Stmt *parse_hook_function(struct Parser *p)
         p->used += param_type->width;
     }
 
-    return parser_block(p);
+    parser_block_gen(p, begin, after);
 }
 
 void parser_program(struct Parser *p)
 {
     while (p->look->tag == STRUCT) {
         parser_struct_decl(p);
-    }
-
-    struct Stmt *s = parse_hook_function(p);
-
-    fprintf(stderr, "[PP] root stmt=%p tag=%d\n",
-            (void *)s,
-            s ? s->base.tag : -1);
-
-    if (s == Stmt_Null) {
-        fprintf(stderr, "[PP] root is Stmt_Null, nothing to generate\n");
+        /* reuse or not reuse, this is a question.
+        mg_region_reset(frontend_region); or?
+        mg_region_destroy(frontend_region);
+        frontend_region = mg_region_create_pool(16);
+         */
     }
 
     int begin = node_newlabel();
     int after = node_newlabel();
 
     node_emitlabel(begin);
-    if (s && s->base.gen) {
-        s->base.gen((struct Node *)s, begin, after);
-    } else {
-        fprintf(stderr, "[PP] root stmt has no gen, tag=%d\n",
-                s ? s->base.tag : -1);
-    }
+    parse_hook_function_gen(p, begin, after);
     node_emitlabel(after);
 }
-
-
-struct Stmt *parser_block(struct Parser *p)
-{
-    parser_match(p, LBRACE);
-    struct Env *saved = p->top;
-    p->top = env_new(p->top);
-    parser_decls(p);
-    struct Stmt *s = parser_stmts(p);
-    parser_match(p, RBRACE);
-    p->top = saved;
-
-    fprintf(stderr, "[PP] block root stmt=%p tag=%d\n", (void *)s, s ? s->base.tag : -1);
-    return s;
-}
-
 
 void parser_decls(struct Parser *p)
 {
     while (p->look->tag == BASIC || p->look->tag == STRUCT) {
         if (p->look->tag == BASIC) {
-            /* 原有 BASIC 声明逻辑 */
             struct Type *tp = parser_type(p);
             struct lexer_token *tok = p->look;
             parser_match(p, ID);
@@ -326,20 +345,18 @@ void parser_decls(struct Parser *p)
             p->used += tp->width;
         }
         else if (p->look->tag == STRUCT) {
-            /* 新增：struct NAME *id; 形式 */
             parser_match(p, STRUCT);
 
             if (p->look->tag != ID || !p->look->lexeme)
                 parser_error(p, "expected struct name");
 
-            char *sname = strdup(p->look->lexeme);
+            char *sname = region_strdup(p->look->lexeme);
             parser_match(p, ID);
 
             struct Type *st = env_get_type(p->top, sname);
             if (!st || st->tag != TYPE_STRUCT)
                 parser_error(p, "unknown struct type in declaration");
 
-            /* 目前只支持指针：struct NAME *id; */
             if (p->look->tag != STAR)
                 parser_error(p, "only 'struct T *var;' is supported for now");
 
@@ -357,7 +374,6 @@ void parser_decls(struct Parser *p)
             struct Id *id = id_new(tok, (struct Type *)pt, p->used);
             env_put_var(p->top, tok->lexeme, id);
 
-            /* 指针本身占用一个槽位（按指针宽度） */
             p->used += pt->base.width;
         }
         else {
@@ -368,17 +384,11 @@ void parser_decls(struct Parser *p)
 
 struct Type *parser_type(struct Parser *p)
 {
-    /* ===== unsigned, only：
-     *   unsigned short
-     *   unsigned int
-     *   unsigned char
-     * errors: unsigned short int / unsigned int int / unsigned char int
-     */
     if (p->look->tag == BASIC &&
         p->look->lexeme &&
         strcmp(p->look->lexeme, "unsigned") == 0)
     {
-        parser_match(p, BASIC);  // eat "unsigned"
+        parser_match(p, BASIC);
 
         if (p->look->tag != BASIC || !p->look->lexeme)
             parser_error(p, "expected type after 'unsigned'");
@@ -395,7 +405,7 @@ struct Type *parser_type(struct Parser *p)
             parser_error(p, "only 'unsigned short', 'unsigned int', 'unsigned char' are supported");
         }
 
-        parser_match(p, BASIC);  // eat short/int/char
+        parser_match(p, BASIC);
 
         if (p->look->tag == BASIC &&
             p->look->lexeme &&
@@ -404,7 +414,6 @@ struct Type *parser_type(struct Parser *p)
             parser_error(p, "unexpected 'int' after 'unsigned' type");
         }
 
-        /* ptr */
         while (p->look->tag == STAR) {
             parser_match(p, STAR);
             tp = (struct Type *)ptr_new(tp);
@@ -440,7 +449,6 @@ struct Type *parser_type(struct Parser *p)
 
         parser_match(p, ID);
 
-        /* ptr */
         while (p->look->tag == STAR) {
             parser_match(p, STAR);
             tp = (struct Type *)ptr_new(tp);
@@ -449,9 +457,8 @@ struct Type *parser_type(struct Parser *p)
         return tp;
     }
 
-    return NULL; 
+    return NULL;
 }
-
 
 struct Type *parser_dims(struct Parser *p, struct Type *base)
 {
@@ -471,105 +478,72 @@ struct Type *parser_dims(struct Parser *p, struct Type *base)
 
 struct Stmt *parser_stmts(struct Parser *p)
 {
-    if (!p->look || p->look->tag == RBRACE || p->look->tag == 0)
-        return Stmt_Null;
+    struct Stmt *result = Stmt_Null;
 
-    struct Stmt *this  = parser_stmt(p);
-    struct Stmt *other = parser_stmts(p);
+    while (p->look && p->look->tag != RBRACE && p->look->tag != 0) {
+        struct Stmt *s = parser_stmt(p);
 
-    return (struct Stmt *)seq_new(this, other);
+        if (result == Stmt_Null) {
+            result = s;
+        } else {
+            result = (struct Stmt *)seq_new(result, s);
+        }
+    }
+
+    return result;
 }
-
 
 struct Stmt *parser_stmt(struct Parser *p)
 {
     struct Expr *x;
     struct Stmt *s1, *s2;
-    struct Stmt *saved;
-    if (!p->look || p->look->tag == 0 || p->look->tag == RBRACE) { 
+
+    if (!p->look || p->look->tag == 0 || p->look->tag == RBRACE)
         return Stmt_Null;
-    }
 
     switch (p->look->tag) {
-    case SEMICOLON:
-        parser_move(p);
-        return Stmt_Null;
+        case SEMICOLON:
+            parser_move(p);
+            return Stmt_Null;
 
-    case IF:
-        parser_match(p, IF);
-        parser_match(p, LPAREN);
-        x = parser_bool(p);
-        parser_match(p, RPAREN);
-        s1 = parser_stmt(p);
-        if (p->look->tag != ELSE)
-            return (struct Stmt *)if_new(x, s1);
-        parser_match(p, ELSE);
-        s2 = parser_stmt(p);
-        return (struct Stmt *)else_new(x, s1, s2);
+        case IF:
+            parser_match(p, IF);
+            parser_match(p, LPAREN);
+            x = parser_bool(p);
+            parser_match(p, RPAREN);
+            s1 = parser_stmt(p);
+            if (p->look->tag != ELSE)
+                return (struct Stmt *)if_new(x, s1);
+            parser_match(p, ELSE);
+            s2 = parser_stmt(p);
+            return (struct Stmt *)else_new(x, s1, s2);
 
-    case WHILE: {
-        struct While *wn = while_new();
-        saved = Stmt_Enclosing;
-        Stmt_Enclosing = (struct Stmt *)wn;
-        parser_match(p, WHILE);
-        parser_match(p, LPAREN);
-        x = parser_bool(p);
-        parser_match(p, RPAREN);
-        s1 = parser_stmt(p);
-        while_init(wn, x, s1);
-        Stmt_Enclosing = saved;
-        return (struct Stmt *)wn;
-    }
+        case LBRACE:
+            return parser_block(p);
 
-    case DO: {
-        struct Do *dn = do_new();
-        saved = Stmt_Enclosing;
-        Stmt_Enclosing = (struct Stmt *)dn;
-        parser_match(p, DO);
-        s1 = parser_stmt(p);
-        parser_match(p, WHILE);
-        parser_match(p, LPAREN);
-        x = parser_bool(p);
-        parser_match(p, RPAREN);
-        parser_match(p, SEMICOLON);
-        do_init(dn, s1, x);
-        Stmt_Enclosing = saved;
-        return (struct Stmt *)dn;
-    }
+        case RETURN:
+            parser_match(p, RETURN);
+            x = parser_bool(p);
+            parser_match(p, SEMICOLON);
+            return (struct Stmt *)return_new(x);
 
-    case BREAK:
-        parser_match(p, BREAK);
-        parser_match(p, SEMICOLON);
-        return (struct Stmt *)break_new();
+        default:
+            if (p->look->tag == ID && p->look->lexeme) {
+                const char *name = p->look->lexeme;
 
-    case LBRACE:
-        return parser_block(p);
-
-    case RETURN:
-        parser_match(p, RETURN);
-        x = parser_bool(p);
-        parser_match(p, SEMICOLON);
-        return (struct Stmt *)return_new(x);
-
-    default: {
-        if (p->look->tag == ID && p->look->lexeme) {
-            const char *name = p->look->lexeme;
-
-            if (strcmp(name, "ntohl") == 0 ||
-                strcmp(name, "ntohs") == 0 ||
-                strcmp(name, "print") == 0 ||
-                strcmp(name, "map_update") == 0 ||
-                strcmp(name, "map_lookup") == 0) {
-
-                struct Expr *e = parser_bool(p);
-                parser_match(p, SEMICOLON);
-                return (struct Stmt *)e;
+                if (strcmp(name, "ntohl") == 0 ||
+                    strcmp(name, "ntohs") == 0 ||
+                    strcmp(name, "print") == 0 ||
+                    strcmp(name, "map_update") == 0 ||
+                    strcmp(name, "map_lookup") == 0)
+                {
+                    struct Expr *e = parser_bool(p);
+                    parser_match(p, SEMICOLON);
+                    return (struct Stmt *)e;
+                }
             }
-        }
 
-        return parser_assign(p);
-    }
-
+            return parser_assign(p);
     }
 }
 
@@ -610,7 +584,7 @@ struct Stmt *parser_assign(struct Parser *p)
         s = (struct Stmt *)setelem_new(x, parser_bool(p));
     }
 
-done:
+    done:
     parser_match(p, SEMICOLON);
     return s;
 }
@@ -630,7 +604,7 @@ struct Expr *parser_bitor(struct Parser *p)
 {
     struct Expr *x = parser_rel(p);
 
-    while (p->look->tag == OR_BIT) {  
+    while (p->look->tag == OR_BIT) {
         struct lexer_token *tok = p->look;
         parser_move(p);
         x = (struct Expr *)bitor_new(tok, x, parser_rel(p));
@@ -643,7 +617,7 @@ struct Expr *parser_bitand(struct Parser *p)
 {
     struct Expr *x = parser_bitor(p);
 
-    while (p->look->tag == AND_BIT) {   
+    while (p->look->tag == AND_BIT) {
         struct lexer_token *tok = p->look;
         parser_move(p);
         x = (struct Expr *)bitand_new(tok, x, parser_rel(p));
@@ -668,18 +642,18 @@ struct Expr *parser_rel(struct Parser *p)
     struct Expr *x = parser_expr(p);
 
     switch (p->look->tag) {
-    case LT:
-    case LE:
-    case GT:
-    case GE:
-    case EQ:
-    case NE: {
-        struct lexer_token *tok = p->look;
-        parser_move(p);
-        return (struct Expr *)rel_new(tok, x, parser_expr(p));
-    }
-    default:
-        return x;
+        case LT:
+        case LE:
+        case GT:
+        case GE:
+        case EQ:
+        case NE: {
+            struct lexer_token *tok = p->look;
+            parser_move(p);
+            return (struct Expr *)rel_new(tok, x, parser_expr(p));
+        }
+        default:
+            return x;
     }
 }
 
@@ -710,7 +684,6 @@ struct Expr *parser_postfix(struct Parser *p)
     struct Expr *e = parser_factor(p);
 
     for (;;) {
-
         if (p->look->tag == LBRACKET) {
             if (e->base.tag != TAG_ID)
                 parser_error(p, "subscript requires identifier");
@@ -774,165 +747,156 @@ struct Expr *parser_factor(struct Parser *p)
 
     switch (p->look->tag) {
 
-    case STRING: {
-        struct Expr *e = (struct Expr *)string_literal_new(p->look->lexeme);
-        parser_move(p);
-        return e;
-    }
-
-
-    case LPAREN: {
-        parser_move(p);
-
-        struct Type *ty = parser_type(p);
-        if (ty != NULL) {
-            parser_match(p, RPAREN);
-            struct Expr *e = parser_unary(p);
-
-            if (e->base.tag == TAG_CTX_PTR) {
-                struct CtxPtrExpr *pp = (struct CtxPtrExpr *)e;
-                if (ty->tag == TYPE_PTR) {
-                    struct PtrType *pt = (struct PtrType *)ty;
-                    if (pt->to->tag == TYPE_STRUCT) {
-                        pp->st        = (struct StructType *)pt->to;
-                        pp->base.type = ty;
-                        return e;
-                    }
-                }
-                parser_error(p, "unsupported cast on ctx pointer");
-            }
-
-            if (e->base.tag == TAG_ID) {
-                struct Id *id = (struct Id *)e;
-                if (strcmp(id->base.op->lexeme, "ctx") == 0) {
-                    if (ty->tag == TYPE_PTR) {
-                        struct PtrType *pt = (struct PtrType *)ty;
-                        if (pt->to->tag == TYPE_STRUCT) {
-                            struct CtxPtrExpr *pp = ctx_ptr_new(0, ty);
-                            pp->st = (struct StructType *)pt->to;
-                            return (struct Expr *)pp;
-                        }
-                    }
-                    parser_error(p, "unsupported cast on ctx");
-                }
-            }
-
-            e->type = ty;
+        case STRING: {
+            struct Expr *e = (struct Expr *)string_literal_new(p->look->lexeme);
+            parser_move(p);
             return e;
         }
 
-        x = parser_bool(p);
-        parser_match(p, RPAREN);
-        return x;
-    }
-
-    case NUM:
-        x = (struct Expr *)constant_int(p->look->int_val);
-        parser_move(p);
-        return x;
-
-    case REAL:
-        x = (struct Expr *)constant_float(p->look->real_val);
-        parser_move(p);
-        return x;
-
-    case TRUE:
-        x = (struct Expr *)Constant_true;
-        parser_move(p);
-        return x;
-
-    case FALSE:
-        x = (struct Expr *)Constant_false;
-        parser_move(p);
-        return x;
-
-    case ID: {
-        if (!p->look->lexeme)
-            parser_error(p, "identifier without lexeme");
-
-        if (strcmp(p->look->lexeme, "ntohl") == 0) {
+        case LPAREN: {
             parser_move(p);
-            parser_match(p, LPAREN);
-            struct Expr *arg = parser_bool(p);
+
+            struct Type *ty = parser_type(p);
+            if (ty != NULL) {
+                parser_match(p, RPAREN);
+                struct Expr *e = parser_unary(p);
+
+                if (e->base.tag == TAG_CTX_PTR) {
+                    struct CtxPtrExpr *pp = (struct CtxPtrExpr *)e;
+                    if (ty->tag == TYPE_PTR) {
+                        struct PtrType *pt = (struct PtrType *)ty;
+                        if (pt->to->tag == TYPE_STRUCT) {
+                            pp->st        = (struct StructType *)pt->to;
+                            pp->base.type = ty;
+                            return e;
+                        }
+                    }
+                    parser_error(p, "unsupported cast on ctx pointer");
+                }
+
+                if (e->base.tag == TAG_ID) {
+                    struct Id *id = (struct Id *)e;
+                    if (strcmp(id->base.op->lexeme, "ctx") == 0) {
+                        if (ty->tag == TYPE_PTR) {
+                            struct PtrType *pt = (struct PtrType *)ty;
+                            if (pt->to->tag == TYPE_STRUCT) {
+                                struct CtxPtrExpr *pp = ctx_ptr_new(0, ty);
+                                pp->st = (struct StructType *)pt->to;
+                                return (struct Expr *)pp;
+                            }
+                        }
+                        parser_error(p, "unsupported cast on ctx");
+                    }
+                }
+
+                e->type = ty;
+                return e;
+            }
+
+            x = parser_bool(p);
             parser_match(p, RPAREN);
-            struct Expr *args[1] = { arg };
-            return (struct Expr *)builtin_call_new(NATIVE_NTOHL, 1, args);
+            return x;
         }
 
-        if (strcmp(p->look->lexeme, "ntohs") == 0) {
+        case NUM:
+            x = (struct Expr *)constant_int(p->look->int_val);
             parser_move(p);
-            parser_match(p, LPAREN);
-            struct Expr *arg = parser_bool(p);
-            parser_match(p, RPAREN);
-            struct Expr *args[1] = { arg };
-            return (struct Expr *)builtin_call_new(NATIVE_NTOHS, 1, args);
-        }
+            return x;
 
-        if (strcmp(p->look->lexeme, "print") == 0) {
+        case TRUE:
+            x = (struct Expr *)Constant_true;
             parser_move(p);
-            parser_match(p, LPAREN);
+            return x;
 
-            struct Expr *arg = NULL;
-            //process string
-            if (p->look->tag == STRING) {
-                arg = parser_factor(p);  
+        case FALSE:
+            x = (struct Expr *)Constant_false;
+            parser_move(p);
+            return x;
+
+        case ID: {
+            if (!p->look->lexeme)
+                parser_error(p, "identifier without lexeme");
+
+            if (strcmp(p->look->lexeme, "ntohl") == 0) {
+                parser_move(p);
+                parser_match(p, LPAREN);
+                struct Expr *arg = parser_bool(p);
                 parser_match(p, RPAREN);
                 struct Expr *args[1] = { arg };
-                return (struct Expr *)builtin_call_new(NATIVE_PRINT_STR, 1, args);
+                return (struct Expr *)builtin_call_new(NATIVE_NTOHL, 1, args);
             }
-            //process digster
-            arg = parser_bool(p);
-            parser_match(p, RPAREN);
-            struct Expr *args[1] = { arg };
-            return (struct Expr *)builtin_call_new(NATIVE_PRINTF, 1, args);
-        }
 
-        if (strcmp(p->look->lexeme, "map_lookup") == 0) {
+            if (strcmp(p->look->lexeme, "ntohs") == 0) {
+                parser_move(p);
+                parser_match(p, LPAREN);
+                struct Expr *arg = parser_bool(p);
+                parser_match(p, RPAREN);
+                struct Expr *args[1] = { arg };
+                return (struct Expr *)builtin_call_new(NATIVE_NTOHS, 1, args);
+            }
+
+            if (strcmp(p->look->lexeme, "print") == 0) {
+                parser_move(p);
+                parser_match(p, LPAREN);
+
+                struct Expr *arg = NULL;
+
+                if (p->look->tag == STRING) {
+                    arg = parser_factor(p);
+                    parser_match(p, RPAREN);
+                    struct Expr *args[1] = { arg };
+                    return (struct Expr *)builtin_call_new(NATIVE_PRINT_STR, 1, args);
+                }
+
+                arg = parser_bool(p);
+                parser_match(p, RPAREN);
+                struct Expr *args[1] = { arg };
+                return (struct Expr *)builtin_call_new(NATIVE_PRINTF, 1, args);
+            }
+
+            if (strcmp(p->look->lexeme, "map_lookup") == 0) {
+                parser_move(p);
+                parser_match(p, LPAREN);
+
+                struct Expr *mapid = parser_bool(p);
+                parser_match(p, COMMA);
+                struct Expr *key   = parser_bool(p);
+
+                parser_match(p, RPAREN);
+
+                struct Expr *args[2] = { mapid, key };
+                return (struct Expr *)builtin_call_new(NATIVE_MAP_LOOKUP, 2, args);
+            }
+
+            if (strcmp(p->look->lexeme, "map_update") == 0) {
+                parser_move(p);
+                parser_match(p, LPAREN);
+
+                struct Expr *mapid = parser_bool(p);
+                parser_match(p, COMMA);
+                struct Expr *key   = parser_bool(p);
+                parser_match(p, COMMA);
+                struct Expr *value = parser_bool(p);
+
+                parser_match(p, RPAREN);
+
+                struct Expr *args[3] = { mapid, key, value };
+                return (struct Expr *)builtin_call_new(NATIVE_MAP_UPDATE, 3, args);
+            }
+
+            struct Id *id = env_get_var(p->top, p->look->lexeme);
+            if (!id)
+                parser_error(p, "undeclared id");
+
             parser_move(p);
-            parser_match(p, LPAREN);
-
-            struct Expr *mapid = parser_bool(p);  
-            parser_match(p, COMMA);
-            struct Expr *key   = parser_bool(p); 
-
-            parser_match(p, RPAREN);
-
-            struct Expr *args[2] = { mapid, key };
-            return (struct Expr *)builtin_call_new(NATIVE_MAP_LOOKUP, 2, args);
+            return (struct Expr *)id;
         }
 
-        if (strcmp(p->look->lexeme, "map_update") == 0) {
-            parser_move(p);
-            parser_match(p, LPAREN);
-
-            struct Expr *mapid = parser_bool(p);   
-            parser_match(p, COMMA);
-            struct Expr *key   = parser_bool(p);  
-            parser_match(p, COMMA);
-            struct Expr *value = parser_bool(p);  
-
-            parser_match(p, RPAREN);
-
-            struct Expr *args[3] = { mapid, key, value };
-            return (struct Expr *)builtin_call_new(NATIVE_MAP_UPDATE, 3, args);
-        }
-
-        struct Id *id = env_get_var(p->top, p->look->lexeme);
-        if (!id)
-            parser_error(p, "undeclared id");
-
-        parser_move(p);
-        return (struct Expr *)id;
-    }
-
-    default:
-        parser_error(p, "syntax error");
-        return NULL;
+        default:
+            parser_error(p, "syntax error");
+            return NULL;
     }
 }
-
-static struct lexer_token TOK_MUL  = { STAR,  0, .lexeme = "*" };
-static struct lexer_token TOK_PLUS = { PLUS,  0, .lexeme = "+" };
 
 struct Access *parser_offset(struct Parser *p, struct Id *a)
 {

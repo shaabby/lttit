@@ -7,7 +7,6 @@
 #include <string.h>
 #include <stdio.h>
 
-#define SCP_DEBUG 1
 
 static void scp_debug_hex(const char *tag, const void *buf, size_t len)
 {
@@ -590,7 +589,6 @@ int scp_input(void *ctx, void *buf, size_t len)
     struct scp_buf *sb;
     struct scp_hdr *sh;
     struct scp_stream *ss;
-
     scp_debug_dump_rx(buf, len);
 
     sb = scp_buf_alloc(sizeof(struct scp_buf) + len);

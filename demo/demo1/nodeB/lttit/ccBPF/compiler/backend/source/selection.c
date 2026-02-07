@@ -29,7 +29,7 @@ void lower_binop(const struct backend_layout *l,
     int a     = temp_slot(l, ir->src1);
     int bslot = temp_slot(l, ir->src2);
 
-    u_short op =
+    uint16_t op =
         (ir->op == IR_ADD) ? (BPF_ALU | BPF_ADD | BPF_X) :
         (ir->op == IR_SUB) ? (BPF_ALU | BPF_SUB | BPF_X) :
                              (BPF_ALU | BPF_MUL | BPF_X);

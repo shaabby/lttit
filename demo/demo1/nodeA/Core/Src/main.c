@@ -184,7 +184,9 @@ void process_rcv(void *ctx)
     while (1) {
         task_enter();
         if (semaphore_take(sem_process, 1000) == true) {
+            //uint32_t ret =  EnterCritical();
             process();
+            //ExitCritical(ret);
         }
         task_exit();
     }
@@ -255,7 +257,7 @@ void APP(void)
 
     scp_init(4);
     scp_stream_alloc(&scp_trans, scp_fd_AtoB, scp_fd_AtoB);
-    timer_create(timer_excu, 10, run);
+    timer_create(timer_excu, 50, run);
 
     rpc_init(4, 4, 4);
     rpc_register_all();
@@ -269,7 +271,7 @@ void APP(void)
     rpc_bind_transport("bpf.load_and_attach", g_rpc_transport);
 
     HAL_Delay(100);
-    task_create(process_rcv, 256, NULL, 0, 12, 0, &t_process);
+    task_create(process_rcv, 256, NULL, 1, 12, 0, &t_process);
     task_create(task_shell, 800, NULL, 4, 10, 0, &t_shell);
 }
 
@@ -288,7 +290,6 @@ int main(void)
 
     while (1) {}
 }
-
 
 /*
 int main(void)
@@ -467,6 +468,62 @@ int main()
 
     while (1) {
     }
+}
+*/
+/*
+int main()
+{
+    HAL_Init();
+    SystemClock_Config();
+    MX_GPIO_Init();
+    MX_USART1_UART_Init();
+
+    struct superblock sb;
+    fs_port_init();
+    if (fs_port_mount(&sb) != 0) {
+        printf("FS mount failed\n");
+        return 0;
+    }
+
+    struct inode *ino;
+    if (fs_open("/prog.ccbpf", O_RDONLY, &ino) != 0) {
+        printf("fs_open /prog.ccbpf failed\n");
+        return 0;
+    }
+
+    uint32_t fsize = fs_get_size(ino);
+    printf("File size = %u bytes\n", (unsigned)fsize);
+
+    uint8_t *image = heap_malloc(fsize);
+    if (!image) {
+        printf("heap_malloc(%u) failed\n", (unsigned)fsize);
+        fs_close(ino);
+        return 0;
+    }
+
+    int r = fs_read(ino, 0, image, fsize);
+    fs_close(ino);
+    if (r != (int)fsize) {
+        printf("fs_read size mismatch: %d vs %u\n", r, (unsigned)fsize);
+        heap_free(image);
+        return 0;
+    }
+
+    printf("=== FILE CONTENT (HEX) ===\n");
+
+    for (uint32_t i = 0; i < fsize; i++) {
+        printf("%02X ", image[i]);
+        if ((i + 1) % 16 == 0)
+            printf("\n");
+    }
+    if (fsize % 16 != 0)
+        printf("\n");
+
+    printf("=== END OF FILE ===\n");
+
+    heap_free(image);
+
+    while (1) {}
 }
 */
 /* USER CODE END 0 */

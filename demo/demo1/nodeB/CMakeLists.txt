@@ -42,6 +42,10 @@ file(GLOB RTOS_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/lttit/RTOS/source/*.c")
 file(GLOB PORT_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/lttit/RTOS/port/*.c")
 file(GLOB LIB_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/lttit/lib/source/*.c")
 file(GLOB MG_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/lttit/mg/source/*.c")
+file(GLOB COMPILER_BACKEND_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/lttit/ccBPF/compiler/backend/source/*.c")
+file(GLOB COMPILER_FRONTEND_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/lttit/ccBPF/compiler/frontend/source/*.c")
+file(GLOB COMPILER_IR_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/lttit/ccBPF/compiler/ir/source/*.c")
+file(GLOB VM_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/lttit/ccBPF/vm/bpf/source/*.c")
 file(GLOB CCNET_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/lttit/CSC/ccnet/source/*.c")
 file(GLOB SCP_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/lttit/CSC/scp/source/*.c")
 file(GLOB FS_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/lttit/fs/source/*.c")
@@ -54,17 +58,16 @@ add_executable(${CMAKE_PROJECT_NAME}
         ${PORT_SOURCES}
         ${LIB_SOURCES}
         ${MG_SOURCES}
+        ${COMPILER_BACKEND_SOURCES}
+        ${COMPILER_FRONTEND_SOURCES}
+        ${COMPILER_IR_SOURCES}
         ${CCNET_SOURCES}
         ${SCP_SOURCES}
         ${FS_SOURCES}
+        ${VM_SOURCES}
         ${SHELL_SOURCES}
         ${VIM_SOURCES}
         ${CCRPC_SOURCES}
-        lttit/CSC/ccrpc/include/rpc_port.h
-        lttit/CSC/ccrpc/source/rpc_port.c
-        lttit/fs/include/fs_rpc.h
-        lttit/fs/source/fs_rpc.c
-        lttit/lib/source/hashmap.c
 )
 
 
@@ -72,15 +75,19 @@ include_directories(
         ${CMAKE_CURRENT_SOURCE_DIR}/lttit/RTOS/include
         ${CMAKE_CURRENT_SOURCE_DIR}/lttit/RTOS/port
         ${CMAKE_CURRENT_SOURCE_DIR}/lttit/lib/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/lttit/ccBPF/compiler/frontend/include/
+        ${CMAKE_CURRENT_SOURCE_DIR}/lttit/ccBPF/compiler/backend/include/
+        ${CMAKE_CURRENT_SOURCE_DIR}/lttit/ccBPF/compiler/ir/include/
         ${CMAKE_CURRENT_SOURCE_DIR}/lttit/mg/include
         ${CMAKE_CURRENT_SOURCE_DIR}/lttit/CSC
+        ${CMAKE_CURRENT_SOURCE_DIR}/lttit/ccBPF/vm/bpf/include/
         ${CMAKE_CURRENT_SOURCE_DIR}/lttit/CSC/ccnet/include
         ${CMAKE_CURRENT_SOURCE_DIR}/lttit/CSC/scp/include
         ${CMAKE_CURRENT_SOURCE_DIR}/lttit/fs/include
         ${CMAKE_CURRENT_SOURCE_DIR}/lttit/shell/include
         ${CMAKE_CURRENT_SOURCE_DIR}/lttit/vim/include
         ${CMAKE_CURRENT_SOURCE_DIR}/lttit/CSC/ccrpc/include
-
+        ${CMAKE_CURRENT_SOURCE_DIR}/lttit/ccBPF
 
 )
 

@@ -7,8 +7,11 @@
 #include <string.h>
 #include <stdio.h>
 
+#define SCP_DEBUG
+
 static void scp_debug_hex(const char *tag, const void *buf, size_t len)
 {
+#ifndef SCP_DEBUG
     const uint8_t *p = buf;
 
     printf("---- %s (%zu bytes) ----\n", tag, len);
@@ -22,27 +25,27 @@ static void scp_debug_hex(const char *tag, const void *buf, size_t len)
         printf("\n");
 
     printf("-----------------------------\n");
+#endif
 }
 
 static int a = 0;
 static void scp_debug_dump_tx(const char *reason,
                               const void *buf, size_t len)
 {
-/*
+#ifndef SCP_DEBUG
     printf("\n[SCP TX] %s, a:%d\n", reason, a++);
     scp_debug_hex("TX Packet", buf, len);
-*/
+#endif
 }
 
 static int b = 0;
 static void scp_debug_dump_rx(const void *buf, size_t len)
 {
-/*
+#ifndef SCP_DEBUG
     printf("\n[SCP RX] %d\n", b++);
     scp_debug_hex("RX Packet", buf, len);
-*/
+#endif
 }
-
 
 
 static uint32_t scp_clock = 0;
@@ -568,7 +571,7 @@ int scp_send(int fd, void *buf, size_t len)
     sb->data = (uint8_t *)sb + sizeof(struct scp_buf);
     sb->len = sizeof(struct scp_hdr) + len;
     sb->seq = ss->snd_nxt;
-    //copy or not copy, this a question.
+    //copy or not copy, this is a question.
     uint8_t *pure_data = (uint8_t *)sb->data + sizeof(struct scp_hdr);
     memcpy(pure_data, buf, len);
     queue_enqueue(&ss->snd_q, &sb->node);

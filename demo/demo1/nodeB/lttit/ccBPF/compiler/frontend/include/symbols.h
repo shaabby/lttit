@@ -6,7 +6,6 @@ struct Id;   // forward declaration
 
 enum type_tag {
     TYPE_INT,
-    TYPE_FLOAT,
     TYPE_CHAR,
     TYPE_SHORT,
     TYPE_BOOL,
@@ -86,6 +85,6 @@ struct Id *env_get_var(struct Env *env, const char *name);
 struct Type *env_get_type(struct Env *env, const char *name);
 
 int type_equal(struct Type *a, struct Type *b);
-
+void symbol_destroy(void);
 
 #endif
