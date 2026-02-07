@@ -12,3 +12,16 @@ RPC_METHOD_REQUEST(
         FIELD(u32, status);
     )
 )
+
+RPC_METHOD_REQUEST(
+    bpf_load_and_attach,
+    "bpf.load_and_attach",
+    PARAMS(
+        FIELD(string, hook_name);
+        FIELD(bytes,  image);
+    ),
+    RESULTS(
+        FIELD(u32, status);
+        FIELD(string, message);
+    )
+)

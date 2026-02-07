@@ -177,30 +177,50 @@
     } while (0)
 #endif
 
-/* ---------- stubs: rpc_call_xxx (heap-based buffers) ---------- */
+static size_t rpc_estimate_field_string(const char *s) { return s ? 1 + strlen(s) : 1; }
+static size_t rpc_estimate_field_u32(uint32_t v) { (void)v; return 1 + 4; }
+static size_t rpc_estimate_field_i32(int32_t v) { (void)v; return 1 + 4; }
+static size_t rpc_estimate_field_bytes(rpc_bytes_t b) { return 1 + 4 + b.len; }
 
+#define FIELD(type, name) sz += rpc_estimate_field_##type(in->name)
+#define PARAMS(...) __VA_ARGS__
+#define GEN_ESTIMATE(name, rpcname, PARAM_LIST, RESULT_LIST) \
+    static size_t rpc_estimate_param_size_##name(const struct rpc_param_##name *in) { \
+        size_t sz = 0; do { PARAM_LIST } while (0); return sz; }
+#define RPC_METHOD_PROVIDER(name, rpcname, PARAM_LIST, RESULT_LIST)
+#define RPC_METHOD_REQUEST(name, rpcname, PARAM_LIST, RESULT_LIST) \
+    GEN_ESTIMATE(name, rpcname, PARAM_LIST, RESULT_LIST)
+#include RPC_METHODS_XDEF_FILE
+#undef RPC_METHOD_PROVIDER
+#undef RPC_METHOD_REQUEST
+#undef GEN_ESTIMATE
+#undef FIELD
+#undef PARAMS
+
+/* ---------- stubs: rpc_call_xxx (heap-based buffers) ---------- */
 #define FIELD(type, name) RPC_EMIT_FIELD_##type(tlvbuf, off, in->name)
 #define PARAMS(...) __VA_ARGS__
 
 #define GEN_STUB(name, rpcname, PARAM_LIST, RESULT_LIST)                \
     int rpc_call_##name(const struct rpc_param_##name *in,              \
                         struct rpc_result_##name *out,                  \
-                        uint32_t timeout_ms)                  \
+                        uint32_t timeout_ms)                            \
     {                                                                   \
-        uint8_t *tlvbuf = (uint8_t *)RPC_ALLOC(RPC_WIRE_BUF_SIZE);      \
+        size_t tlv_size = rpc_estimate_param_size_##name(in);           \
+        uint8_t *tlvbuf = (uint8_t *)RPC_ALLOC(tlv_size);               \
         if (!tlvbuf)                                                    \
             return -1;                                                  \
-        memset(tlvbuf, 0, RPC_WIRE_BUF_SIZE);                           \
+        memset(tlvbuf, 0, tlv_size);                                    \
         size_t off = 0;                                                 \
         do { PARAM_LIST } while (0);                                    \
                                                                         \
-        uint8_t *resp = (uint8_t *)RPC_ALLOC(RPC_WIRE_BUF_SIZE);        \
+        size_t resp_len = tlv_size;                                     \
+        uint8_t *resp = (uint8_t *)RPC_ALLOC(resp_len);                 \
         if (!resp) {                                                    \
             RPC_FREE(tlvbuf);                                           \
             return -1;                                                  \
         }                                                               \
-        memset(resp, 0, RPC_WIRE_BUF_SIZE);                             \
-        size_t resp_len = RPC_WIRE_BUF_SIZE;                            \
+        memset(resp, 0, resp_len);                                      \
                                                                         \
         int st = rpc_call_with_tlv(rpcname, tlvbuf, off, resp, &resp_len, timeout_ms); \
         if (st == 0)                                                    \

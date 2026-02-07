@@ -16,6 +16,7 @@
 #include "schedule.h"
 #include "heap.h"
 #include "scp.h"
+#include "fs.h"
 
 static char linebuf[SHELL_MAX_LINE];
 static char path[SHELL_MAX_PATH];
@@ -406,6 +407,65 @@ int cmd_memleak(int argc, char **argv)
     return 0;
 }
 
+int cmd_bpf_hook(int argc, char **argv)
+{
+    if (argc != 3) {
+        printf("Usage: bpf_hook <hook_name> <path>\n");
+        return -1;
+    }
+
+    const char *hook_name = argv[1];
+    const char *path      = argv[2];
+
+    struct inode *ino;
+    if (fs_open(path, O_RDONLY, &ino) != 0) {
+        printf("fs_open %s failed\n", path);
+        return -1;
+    }
+
+    uint32_t fsize = fs_get_size(ino);
+    uint8_t *image = heap_malloc(fsize);
+    if (!image) {
+        printf("heap_malloc(%u) failed\n", (unsigned)fsize);
+        fs_close(ino);
+        return -1;
+    }
+
+    int r = fs_read(ino, 0, image, fsize);
+    fs_close(ino);
+    if (r != (int)fsize) {
+        printf("fs_read size mismatch: %d vs %u\n", r, (unsigned)fsize);
+        heap_free(image);
+        return -1;
+    }
+
+    struct rpc_param_bpf_load_and_attach in;
+    struct rpc_result_bpf_load_and_attach out;
+    memset(&in, 0, sizeof(in));
+    memset(&out, 0, sizeof(out));
+
+    in.hook_name = (char *)hook_name;
+    in.image.ptr = image;
+    in.image.len = fsize;
+
+    printf("[NodeA] calling bpf.load_and_attach...\n");
+
+    int st = rpc_call_bpf_load_and_attach(&in, &out, 2000);
+
+    heap_free(image);
+
+    printf("[NodeA] rpc_call_bpf_load_and_attach => %d\n", st);
+
+    if (st == 0) {
+        printf("status=%u\n", out.status);
+        if (out.message)
+            printf("message=%s\n", out.message);
+    }
+
+    free_result_bpf_load_and_attach(&out);
+    return st;
+}
+
 struct cmd_entry {
     const char *name;
     int (*func)(int argc, char **argv);
@@ -431,6 +491,7 @@ static struct cmd_entry cmd_table[] = {
         {"remote", cmd_remote},
         {"fsop", cmd_fsop},
         {"memleak", cmd_memleak},
+        {"bpf_hook", cmd_bpf_hook},
         {NULL,     NULL}
 };
 

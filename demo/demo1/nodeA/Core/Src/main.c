@@ -57,7 +57,6 @@ void SystemClock_Config(void);
 /* USER CODE BEGIN 0 */
 #include "stm32f1xx_hal.h"
 #include "fs_port.h"
-/*
 #include "schedule.h"
 #include "sem.h"
 #include "ccnet.h"
@@ -68,7 +67,6 @@ void SystemClock_Config(void);
 #include "timer.h"
 #include "rpc.h"
 #include "rpc_gen.h"
- */
 #include "lexer.h"
 #include "parser.h"
 #include "heap.h"
@@ -77,7 +75,7 @@ void SystemClock_Config(void);
 #include "ccbpf.h"
 #include <stdio.h>
 #include <memory.h>
-/*
+
 extern UART_HandleTypeDef huart1;
 extern UART_HandleTypeDef huart2;
 
@@ -115,7 +113,7 @@ static int pc_provider(void *ctx, void *data, size_t len)
 
 
 uint8_t send_buf[256];
-uint8_t rcv_buf[256];
+uint8_t rcv_buf[200];
 uint8_t packet[256];
 semaphore_handle sem_process;
 #define START 0xA55AA55A
@@ -268,10 +266,11 @@ void APP(void)
                                    NULL);
 
     rpc_bind_transport("fs.operation", g_rpc_transport);
+    rpc_bind_transport("bpf.load_and_attach", g_rpc_transport);
 
     HAL_Delay(100);
     task_create(process_rcv, 256, NULL, 0, 12, 0, &t_process);
-    task_create(task_shell, 1024, NULL, 4, 10, 0, &t_shell);
+    task_create(task_shell, 800, NULL, 4, 10, 0, &t_shell);
 }
 
 int main(void)
@@ -289,7 +288,7 @@ int main(void)
 
     while (1) {}
 }
-*/
+
 
 /*
 int main(void)
@@ -388,7 +387,6 @@ int main(void)
 
     return 0;
 }
-*/
 
 struct udp_hdr {
     uint16_t sport;
@@ -470,7 +468,7 @@ int main()
     while (1) {
     }
 }
-
+*/
 /* USER CODE END 0 */
 
 /**

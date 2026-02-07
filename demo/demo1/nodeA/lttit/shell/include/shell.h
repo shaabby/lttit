@@ -14,7 +14,7 @@
 #define SHELL_BACKSPACE_SEQ       "\b \b"
 #define SHELL_BACKSPACE_SEQ_LEN   3
 
-#define SHELL_ENABLE_FS   0
+#define SHELL_ENABLE_FS   1
 #define SHELL_ENABLE_VIM  0
 
 void shell_main(void);
