@@ -85,6 +85,10 @@ int bpf_load_and_attach_handler(const struct rpc_param_bpf_load_and_attach *in,
     }
 
     out->status  = 0;
-    out->message = "ok";
+    const char *msg = "ok";
+    size_t len = strlen(msg) + 1;
+    out->message = heap_malloc(len);
+    memcpy(out->message, msg, len);
+
     return 0;
 }

@@ -166,7 +166,7 @@ struct ccbpf_program *ccbpf_load_from_memory(const uint8_t *image, size_t len)
 
     prog->map_count = CCBPF_MAX_MAPS;
     for (size_t i = 0; i < prog->map_count; i++) {
-        hashmap_init(&prog->maps[i], 64, HASHMAP_KEY_INT);
+        hashmap_init(&prog->maps[i], CCBPF_BUCKET_COUNT, HASHMAP_KEY_INT);
     }
 
     return prog;

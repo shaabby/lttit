@@ -178,8 +178,7 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 
 TaskHandle_t t_shell;
 
-static uint8_t buf[512];
-int a = 0;
+static uint8_t buf[256];
 /* Parse UART frame, feed into ccnet (which feeds SCP) */
 void shell_process_remote(void)
 {
@@ -211,12 +210,9 @@ void shell_process_remote(void)
         /* Feed raw ccnet packet into stack (upper layer is SCP now) */
 
         ccnet_input(NULL, (void *)packet, packet_len);
-        int rn = scp_recv(SCP_FD_B2A, buf + a, sizeof(buf));
+        int rn = scp_recv(SCP_FD_B2A, buf, sizeof(buf));
         if (rn > 0) {
-            a += rn;
-            if (a >= 400) {
-                rpc_on_data(rt, buf, (size_t)a);
-            }
+            rpc_on_data(rt, buf, (size_t)rn);
         }
     }
 }

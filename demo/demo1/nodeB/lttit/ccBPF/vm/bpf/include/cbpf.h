@@ -132,7 +132,8 @@ struct CCBPF_Header {
     uint32_t entry;
 };
 
-#define CCBPF_MAX_MAPS 8
+#define CCBPF_MAX_MAPS 4
+#define CCBPF_BUCKET_COUNT 16
 
 struct ccbpf_program {
     struct bpf_insn *insns; //.text
