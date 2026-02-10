@@ -1,4 +1,4 @@
-RPC_METHOD_REQUEST(
+RPC_METHOD_PROVIDER(
     fs_operation,
     "fs.operation",
     PARAMS(
@@ -13,7 +13,7 @@ RPC_METHOD_REQUEST(
     )
 )
 
-RPC_METHOD_REQUEST(
+RPC_METHOD_PROVIDER(
     bpf_load_and_attach,
     "bpf.load_and_attach",
     PARAMS(

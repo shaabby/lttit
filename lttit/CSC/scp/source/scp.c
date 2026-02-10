@@ -7,7 +7,7 @@
 #include <string.h>
 #include <stdio.h>
 
-
+#define SCP_DEBUG
 static void scp_debug_hex(const char *tag, const void *buf, size_t len)
 {
 #ifndef SCP_DEBUG

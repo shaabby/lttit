@@ -567,7 +567,6 @@ void task_switch_context(void)
     uh->checksum = 0;
 
     uint32_t ret = udp_input(pkt, 20);
-    //printf("udp_input() returned %u\n", (unsigned)ret);
 
     TaskHandle_t old = schedule_currentTCB;
     TaskHandle_t next = NULL;

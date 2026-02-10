@@ -50,6 +50,7 @@ static uint8_t resp_tlv[RPC_MAX_RESULT_TLV_SIZE];
 // max segment
 static uint8_t poll_buf[MTU];
 
+#define RPC_DEBUG
 static void ccnet_debug_hex(const char *tag, const void *buf, size_t len)
 {
 #ifndef RPC_DEBUG
@@ -361,7 +362,7 @@ static void rpc_handle_request(struct rpc_transport_class *t,
             status = RPC_STATUS_INTERNAL_ERROR;
     }
 
-    size_t resp_len = 0;
+    size_t resp_len = sizeof(resp_tlv);
     memset(resp_tlv, 0, sizeof(resp_tlv));
 
     if (status == RPC_STATUS_OK && m->encode_result) {

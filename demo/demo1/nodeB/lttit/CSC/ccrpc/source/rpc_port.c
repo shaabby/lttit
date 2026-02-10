@@ -1,11 +1,11 @@
 #include "rpc_port.h"
 #include "sem.h"
-#include "heap.h"
 #include "schedule.h"
+#include <stdlib.h>
 
 struct rpc_waiter *rpc_waiter_create(void)
 {
-    struct rpc_waiter *w = heap_malloc(sizeof(struct rpc_waiter));
+    struct rpc_waiter *w = malloc(sizeof(struct rpc_waiter));
     if (!w)
         return NULL;
 
@@ -19,7 +19,7 @@ void rpc_waiter_destroy(struct rpc_waiter *w)
     if (!w)
         return;
     semaphore_delete(w->sem);
-    heap_free(w);
+    free(w);
 }
 
 int rpc_waiter_wait(struct rpc_waiter *w, uint32_t timeout_ms)

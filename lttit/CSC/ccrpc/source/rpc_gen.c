@@ -200,6 +200,9 @@ static size_t rpc_estimate_field_bytes(rpc_bytes_t b) { return 1 + 4 + b.len; }
 /* ---------- stubs: rpc_call_xxx (heap-based buffers) ---------- */
 #define FIELD(type, name) RPC_EMIT_FIELD_##type(tlvbuf, off, in->name)
 #define PARAMS(...) __VA_ARGS__
+#ifndef RPC_RESP_BUF_SIZE
+#define RPC_RESP_BUF_SIZE 256
+#endif
 
 #define GEN_STUB(name, rpcname, PARAM_LIST, RESULT_LIST)                \
     int rpc_call_##name(const struct rpc_param_##name *in,              \
@@ -214,7 +217,7 @@ static size_t rpc_estimate_field_bytes(rpc_bytes_t b) { return 1 + 4 + b.len; }
         size_t off = 0;                                                 \
         do { PARAM_LIST } while (0);                                    \
                                                                         \
-        size_t resp_len = tlv_size;                                     \
+        size_t resp_len = RPC_RESP_BUF_SIZE;                            \
         uint8_t *resp = (uint8_t *)RPC_ALLOC(resp_len);                 \
         if (!resp) {                                                    \
             RPC_FREE(tlvbuf);                                           \
@@ -255,7 +258,8 @@ static size_t rpc_estimate_field_bytes(rpc_bytes_t b) { return 1 + 4 + b.len; }
     {                                                                   \
         struct rpc_result_##name *r = result_struct;                    \
         size_t off = 0;                                                 \
-        memset(buf, 0, RPC_WIRE_BUF_SIZE);                              \
+        if (out_len && *out_len > 0)                                    \
+            memset(buf, 0, *out_len);                                   \
         do { RESULT_LIST } while (0);                                   \
         *out_len = off;                                                 \
         return 0;                                                       \

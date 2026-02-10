@@ -362,7 +362,7 @@ static void rpc_handle_request(struct rpc_transport_class *t,
             status = RPC_STATUS_INTERNAL_ERROR;
     }
 
-    size_t resp_len = 0;
+    size_t resp_len = sizeof(resp_tlv);
     memset(resp_tlv, 0, sizeof(resp_tlv));
 
     if (status == RPC_STATUS_OK && m->encode_result) {
