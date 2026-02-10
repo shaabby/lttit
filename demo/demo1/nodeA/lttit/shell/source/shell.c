@@ -381,7 +381,7 @@ int cmd_fsop(int argc, char **argv)
 
     printf("[NodeB] calling fs.operation...\n");
 
-    int st = rpc_call_fs_operation(&p, &r, 100);
+    int st = rpc_call_fs_operation(&p, &r, 10000);
 
     printf("[NodeB] rpc_call_fs_operation => %d\n", st);
 

@@ -237,11 +237,10 @@ TaskHandle_t t_scp_shell;
 static void task_scp_shell(void *ctx)
 {
     (void)ctx;
-    int a = 0;
     memset(buf, 0, sizeof(buf));
     while (1) {
         task_enter();
-        int rn = scp_recv(SCP_FD_B2A, buf + a, sizeof(buf));
+        int rn = scp_recv(SCP_FD_B2A, buf, sizeof(buf));
         if (rn > 0) {
             rpc_on_data(rt, buf, (size_t)rn);
             shell_on_message(buf, (size_t)rn);

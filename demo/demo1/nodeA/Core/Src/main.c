@@ -184,9 +184,7 @@ void process_rcv(void *ctx)
     while (1) {
         task_enter();
         if (semaphore_take(sem_process, 1000) == true) {
-            //uint32_t ret =  EnterCritical();
             process();
-            //ExitCritical(ret);
         }
         task_exit();
     }

@@ -553,14 +553,6 @@ struct udp_hdr {
 uint32_t udp_input(uint8_t *frame, size_t frame_size)
 {
     uint32_t ret = hook_run("hook_udp_input", frame, frame_size);
-/*
-    struct udp_hdr *uh = (struct udp_hdr *)frame;
-    uint16_t sport = ntohs(uh->sport);
-    uint16_t dport = ntohs(uh->dport);
-
-    printf("udp_input: sport=%u dport=%u hook_ret=%u\n",
-           sport, dport, (unsigned)ret);
-*/
     return ret;
 }
 

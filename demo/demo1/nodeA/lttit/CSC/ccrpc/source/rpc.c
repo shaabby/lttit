@@ -50,6 +50,7 @@ static uint8_t resp_tlv[RPC_MAX_RESULT_TLV_SIZE];
 // max segment
 static uint8_t poll_buf[MTU];
 
+#define RPC_DEBUG
 static void ccnet_debug_hex(const char *tag, const void *buf, size_t len)
 {
 #ifndef RPC_DEBUG
