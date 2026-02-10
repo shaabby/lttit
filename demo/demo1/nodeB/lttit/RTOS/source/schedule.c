@@ -343,6 +343,9 @@ void record_wake_time(uint16_t ticks)
 void delay_tree_remove(TaskHandle_t self)
 {
     rb_remove_node(&WakeTicksTree, &self->delay_node);
+
+    if (self->deadline != 0 && self->period != 0)
+        self->abs_deadline = NowTickCount + self->deadline;
 }
 
 void task_delay(uint16_t ticks)
@@ -626,9 +629,6 @@ void check_ticks(void)
                 container_of(n, struct TCB_t, delay_node);
 
         delay_tree_remove(self);
-
-        if (self->deadline != 0 && self->period != 0)
-            self->abs_deadline = NowTickCount + self->deadline;
 
         task_tree_add(self, Ready);
 

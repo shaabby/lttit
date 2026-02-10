@@ -7,6 +7,6 @@
 void *mem_malloc(size_t size);
 void mem_free(void *ptr);
 
-typedef uint64_t ptr_size_t;
+typedef uint32_t ptr_size_t;
 
 #endif

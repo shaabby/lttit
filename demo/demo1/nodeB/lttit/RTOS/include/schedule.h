@@ -19,7 +19,6 @@
 typedef void (*TaskFunction_t)(void *);
 typedef struct TCB_t *TaskHandle_t;
 extern volatile uint8_t schedule_PendSV;
-TaskHandle_t get_current_tcb(void);
 
 void rtos_task_set_waiting_obj(TaskHandle_t t, void *obj);
 void *rtos_task_get_waiting_obj(TaskHandle_t t);
