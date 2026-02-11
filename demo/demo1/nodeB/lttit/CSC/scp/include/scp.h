@@ -85,8 +85,8 @@ struct scp_stream {
     uint32_t sb_hiwat;
     uint32_t sb_cc;
 
-    uint32_t persist_backoff;  // persist 退避
-    uint8_t  zero_wnd;         // 当前是否处于零窗口状态
+    uint32_t persist_backoff;
+    uint8_t  zero_wnd;         // zero flag
 
     uint32_t timestamp;
     int state;

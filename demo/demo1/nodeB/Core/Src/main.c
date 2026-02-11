@@ -288,7 +288,7 @@ void APP(void)
 
     /* SCP init and stream allocation */
     scp_init(4);
-    scp_stream_alloc(&scp_trans, SCP_FD_B2A, SCP_FD_B2A);
+    scp_stream_alloc(&scp_trans, SCP_FD_B2A, SCP_FD_A2B);
 
     rpc_init(4, 4, 4);
     rpc_register_all();
