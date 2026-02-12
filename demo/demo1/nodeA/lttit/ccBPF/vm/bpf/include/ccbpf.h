@@ -8,8 +8,6 @@
 uint32_t ccbpf_run_frame(struct ccbpf_program *p,
                          void *frame,
                          size_t frame_size);
-
-struct ccbpf_program *ccbpf_load(const char *path);
 int hook_attach(const char *hook_name, uint8_t *image, size_t len);
 int hook_detach(const char *hook_name);
 uint32_t hook_run(const char *hook_name, uint8_t *frame, size_t frame_size);
