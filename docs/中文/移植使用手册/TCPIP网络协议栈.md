@@ -19,16 +19,7 @@ litterTCP是一个轻量级、可移植的 IPv4 协议栈，参考4.4BSD-lite，
 
 # 初始化
 
-协议栈初始化分为 4 部分：
-
-```
-eth_init();
-arp_init();
-ip_init();
-tcp_init();
-```
-
-示例：
+协议栈初始化：
 
 ```
 eth_init();
