@@ -291,6 +291,14 @@ int scp_stream_free(struct scp_stream *ss);
 
 释放流。
 
+### 连接
+
+```c
+int scp_connect(int fd);
+```
+
+这个函数会与远程scp协议进行握手。
+
 ### 输入数据
 
 ```c
@@ -321,7 +329,7 @@ int scp_recv(int fd, void *buf, size_t len);
 void scp_close(int fd);
 ```
 
-关闭流。
+挥手，关闭流。
 
 ### 定时器处理
 
@@ -330,6 +338,28 @@ void scp_timer_process();
 ```
 
 SCP 的重传、保活、persist 等定时器事件都依赖此函数，在调用scp的线程中，记得在接收数据后顺便调用一下定时器处理。
+
+### 宏配置
+
+头文件中的宏可根据需求进行配置。
+
+```c
+//Set by yourself.
+#define RETRANS_COUNT_MAX 12   //最大超时次数
+#define MIN_SEG 32             //最小可发送分段
+#define SCP_RTO_MIN 100        //最小RTO
+#define SCP_RTO_MAX 1000      
+#define SCP_RECV_LIMIT 0xFFFF  
+#define SEND_WIN_INIT 0xFFFF
+#define RECV_WIN_INIT     0xFFFF
+#define SSTHRESH_INIT 0xFFFF
+#define MTU 1460             //链路数据大小限制  
+#define PERSIST_INTERVAL 200  //探测定时器周期
+#define MAX_IDLE_FAIL  3      //保活机制最多尝试次数
+#define IDLE_TIMEOUT 100000   //保活机制触发的时间间隔
+```
+
+
 
 ## 多线程注意
 

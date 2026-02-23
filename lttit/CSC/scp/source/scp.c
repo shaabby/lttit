@@ -1,9 +1,9 @@
 #include "scp.h"
 #include "hashmap.h"
 #include "queue.h"
-#include "in_cksum.h"
+#include "common.h"
+#include "heap.h"
 #include <stdlib.h>
-#include <arpa/inet.h>
 #include <string.h>
 #include <stdio.h>
 
@@ -151,12 +151,12 @@ static void scp_dump_hdr(struct scp_stream *ss,
 //write by yourself
 void *scp_malloc(size_t want_size)
 {
-    return malloc(want_size);
+    return heap_malloc(want_size);
 }
 
 void scp_free(void *ptr)
 {
-    free(ptr);
+    heap_free(ptr);
 }
 
 void scp_timer_init(void)
