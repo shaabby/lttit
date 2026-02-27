@@ -1,9 +1,9 @@
 #include "scp.h"
 #include "hashmap.h"
 #include "queue.h"
-#include "common.h"
-#include "heap.h"
+#include "in_cksum.h"
 #include <stdlib.h>
+#include <arpa/inet.h>
 #include <string.h>
 #include <stdio.h>
 
@@ -80,7 +80,7 @@ static void scp_dump_hdr(struct scp_stream *ss,
     struct rb_node *rn;
     for (rn = rb_first(&ss->rcv_buf_q); rn != NULL; rn = rb_next(rn)) rcvq++;
 
-    uint32_t flight = ss->snd_sent - ss->snd_una;
+    uint32_t flight = ss->snd_nxt - ss->snd_una;
 
     printf("{\"t\":%u,"
            "\"dir\":\"%s\","
@@ -92,8 +92,8 @@ static void scp_dump_hdr(struct scp_stream *ss,
            "\"flags\":%u,"
 
            "\"snd_una\":%u,"
+           "\"snd_seq_q\":%u,"
            "\"snd_nxt\":%u,"
-           "\"snd_sent\":%u,"
            "\"rcv_nxt\":%u,"
 
            "\"snd_wnd\":%u,"
@@ -124,8 +124,8 @@ static void scp_dump_hdr(struct scp_stream *ss,
            h->flags,
 
            ss->snd_una,
+           ss->snd_seq_q,
            ss->snd_nxt,
-           ss->snd_sent,
            ss->rcv_nxt,
 
            ss->snd_wnd,
@@ -151,12 +151,12 @@ static void scp_dump_hdr(struct scp_stream *ss,
 //write by yourself
 void *scp_malloc(size_t want_size)
 {
-    return heap_malloc(want_size);
+    return malloc(want_size);
 }
 
 void scp_free(void *ptr)
 {
-    heap_free(ptr);
+    free(ptr);
 }
 
 void scp_timer_init(void)
@@ -258,7 +258,7 @@ static void scp_timer_retrans_cb(void *arg)
     struct scp_stream *ss = arg;
     if (!ss || ss->state == SCP_CLOSED) return;
 
-    uint32_t flight = ss->snd_sent - ss->snd_una;
+    uint32_t flight = ss->snd_nxt - ss->snd_una;
     uint32_t mss = MTU - sizeof(struct scp_hdr);
     if (mss == 0) mss = 1;
 
@@ -266,13 +266,10 @@ static void scp_timer_retrans_cb(void *arg)
     uint32_t min_thresh = 2 * mss;
     ss->ssthresh = (half > min_thresh) ? half : min_thresh;
 
-    ss->cwnd = mss;
+    ss->cwnd = 10*mss;
     ss->dup_acks = 0;
     ss->fr_active = 0;
 
-    ss->pacing_credit = 0;
-    ss->pacing_last_ts = scp_now_time();
-    ss->pacing_rate = ss->cwnd;
     scp_retransmit(ss);
     ss->timeout_count++;
 
@@ -410,16 +407,14 @@ struct scp_stream *scp_stream_alloc(struct scp_transport_class *st_class, int sr
             .state = SCP_CLOSED,
             .iss = 0,
             .rcv_nxt = 0,
+            .snd_seq_q = 0,
             .snd_nxt = 0,
-            .snd_sent = 0,
             .snd_una = 0,
             .cwnd = MTU, 
             .ssthresh = SSTHRESH_INIT,
             .dup_acks = 0,
-            .pacing_credit = 0,
+            .last_gap_rexmit_ack = 0,
             .fr_active = 0,
-            .pacing_rate = 0, 
-            .pacing_last_ts = 0,
             .packet_bytes = 0,
             .packet_count = 0,
     };
@@ -544,7 +539,7 @@ static void scp_send_window_probe(struct scp_stream *ss)
 /*
  * SACK-based selective retransmit.
  * Resend all bytes in [gap_start, gap_end) from snd_q.
- * rely on cwnd/pacing path for congestion control.
+ * rely on cwnd path for congestion control.
  */
 void scp_retransmit_gap(struct scp_stream *ss,
                         uint32_t gap_start,
@@ -555,10 +550,7 @@ void scp_retransmit_gap(struct scp_stream *ss,
     uint32_t mss = MTU - sizeof(struct scp_hdr);
     if (mss == 0) mss = 1;
 
-    uint32_t snd_wnd = ss->snd_wnd;
-    uint32_t flight  = ss->snd_sent - ss->snd_una;
-
-    int limited_mode = (snd_wnd > 0 && flight > 4 * snd_wnd);
+    uint32_t flight = ss->snd_nxt - ss->snd_una;
 
     for (n = ss->snd_q.next; n != &ss->snd_q; n = n->next) {
 
@@ -582,6 +574,14 @@ void scp_retransmit_gap(struct scp_stream *ss,
         int sent_frags = 0;
 
         while (start < total && sent_frags < 2) {
+            uint32_t win = ss->snd_wnd;
+            if (ss->cwnd < win)
+                win = ss->cwnd;
+
+            int32_t swnd = (int32_t)win - (int32_t)flight;
+
+            if (swnd <= 0)
+                swnd = (int32_t)mss;
 
             uint32_t remain = total - start;
             uint32_t frag   = min(mss, remain);
@@ -596,22 +596,16 @@ void scp_retransmit_gap(struct scp_stream *ss,
             if (frag == 0)
                 break;
 
-            if (ss->pacing_rate > 0 && ss->cwnd >= 4*mss) {
-                if (ss->pacing_credit < frag)
-                    return;
-                ss->pacing_credit -= frag;
-            }
-
-            if (limited_mode && sent_frags >= 1)
+            if (frag > (uint32_t)swnd)
+                frag = (uint32_t)swnd;
+            if (frag == 0)
                 return;
 
             scp_output_data(ss, sb, start, frag);
 
-            start += frag;
+            start  += frag;
+            flight += frag;
             sent_frags++;
-
-            if (SEQ_GT(frag_end, ss->snd_sent))
-                ss->snd_sent = frag_end;
         }
 
         return;
@@ -631,10 +625,7 @@ static void scp_retransmit(struct scp_stream *ss)
     if (mss == 0) mss = 1;
 
     uint32_t snd_wnd = ss->snd_wnd;
-    uint32_t flight  = ss->snd_sent - ss->snd_una;
-
-    if (snd_wnd > 0 && flight >= 4 * snd_wnd)
-        return;
+    uint32_t flight  = ss->snd_nxt - ss->snd_una;
 
     for (n = ss->snd_q.next; n != &ss->snd_q; n = n->next) {
 
@@ -660,18 +651,7 @@ static void scp_retransmit(struct scp_stream *ss)
         uint32_t remain = total - start;
         uint32_t frag   = (remain > mss) ? mss : remain;
 
-        if (ss->pacing_rate > 0 && ss->cwnd >= 4*mss) {
-            if (ss->pacing_credit < frag) {
-                return;
-            }
-            ss->pacing_credit -= frag;
-        }
-
         scp_output_data(ss, sb, start, frag);
-
-        uint32_t end_seq = seg_start + start + frag;
-        if (SEQ_GT(end_seq, ss->snd_sent))
-            ss->snd_sent = end_seq;
 
         return;
     }
@@ -718,15 +698,11 @@ static void scp_output_connect_ack(struct scp_stream *ss)
     ss->st_class->send(ss->st_class->user, &hdr, sizeof(hdr));
 }
 
-/*
-*For fin,
-* We need snd_nxt++, other ,if close in same time,that is bad.  
-*/
-static void scp_output_fin(struct scp_stream *ss)
+static void scp_output_fin_first(struct scp_stream *ss)
 {
     struct scp_hdr hdr;
 
-    hdr.seq  = htonl(ss->snd_nxt);    
+    hdr.seq  = htonl(ss->snd_nxt);
     hdr.ack  = htonl(ss->rcv_nxt);
     hdr.sack = htonl(scp_calc_sack(ss));
     hdr.wnd  = htons((uint16_t)ss->rcv_wnd);
@@ -738,12 +714,30 @@ static void scp_output_fin(struct scp_stream *ss)
 
     scp_debug_dump_tx("FIN", &hdr, sizeof(hdr));
     scp_dump_hdr(ss, "FIN", &hdr);
-
     ss->st_class->send(ss->st_class->user, &hdr, sizeof(hdr));
 
-    ss->snd_nxt++;
-    ss->snd_sent++;
+    ss->snd_nxt++;   
 }
+
+static void scp_output_fin_retrans(struct scp_stream *ss)
+{
+    struct scp_hdr hdr;
+
+    hdr.seq  = htonl(ss->snd_nxt - 1);  
+    hdr.ack  = htonl(ss->rcv_nxt);
+    hdr.sack = htonl(scp_calc_sack(ss));
+    hdr.wnd  = htons((uint16_t)ss->rcv_wnd);
+    hdr.len  = 0;
+    hdr.flags = SCP_FLAG_FIN | SCP_FLAG_ACK;
+    hdr.fd   = ss->dst_fd;
+    hdr.cksum = 0;
+    hdr.cksum = in_checksum(&hdr, sizeof(hdr));
+
+    scp_debug_dump_tx("FIN_RETRANS", &hdr, sizeof(hdr));
+    scp_dump_hdr(ss, "FIN_RETRANS", &hdr);
+    ss->st_class->send(ss->st_class->user, &hdr, sizeof(hdr));
+}
+
 
 /*
 *For handshake timeout, we need to retrans it.
@@ -791,7 +785,7 @@ static void scp_handle_fin_timeout(void *arg)
     }
 
     if (ss->retry++ < 5) {
-        scp_output_fin(ss);
+        scp_output_fin_retrans(ss);
 
         scp_timer_delete(&ss->t_fin);
         scp_timer_create(&ss->t_fin,
@@ -1040,7 +1034,7 @@ void scp_snd_buf_free(struct scp_stream *ss, uint32_t ack)
  * An ACK tells us the peer has received data.
  * We update RTT from this sample and free sent buffers.
  * The ACK also reflects the peer’s congestion state.
- * Handle ACK: update RTT, free buffers, run Reno + FR + pacing 
+ * Handle ACK: update RTT, free buffers, run Reno + FR  
  */
 static void scp_process_ack(struct scp_stream *ss,
                             uint32_t ack,
@@ -1065,9 +1059,12 @@ static void scp_process_ack(struct scp_stream *ss,
 
     scp_snd_buf_free(ss, ack);
 
-    // SACK-based gap retransmit
-    if (SEQ_GT(sack, ack))
-        scp_retransmit_gap(ss, ack, sack);
+    if (SEQ_GT(sack, ack)) {
+        if (SEQ_GT(ack, ss->last_gap_rexmit_ack)) {
+            scp_retransmit_gap(ss, ack, sack);
+            ss->last_gap_rexmit_ack = ack;
+        }
+    }
 
     // New data ACKed
     if (SEQ_GT(ss->snd_una, old_una)) {
@@ -1075,16 +1072,6 @@ static void scp_process_ack(struct scp_stream *ss,
         uint32_t acked = ss->snd_una - old_una;
         uint32_t mss   = MTU - sizeof(struct scp_hdr);
         if (!mss) mss = 1;
-
-        /* update pacing_rate using acked/srtt */
-        if (ss->srtt > 0) {
-            uint32_t sample = acked / ss->srtt;
-            if (sample == 0) sample = 1;
-            if (ss->pacing_rate == 0)
-                ss->pacing_rate = sample;
-            else
-                ss->pacing_rate = (ss->pacing_rate * 7 + sample) / 8; // EWMA
-        }
 
         // Exit Fast Recovery 
         if (ss->fr_active) {
@@ -1099,6 +1086,7 @@ static void scp_process_ack(struct scp_stream *ss,
         if (!ss->fr_active) {
             if (ss->cwnd < ss->ssthresh) {
                 uint32_t inc = acked;
+                if (inc < mss)  inc = mss;
                 if (inc > 2*mss) inc = 2*mss;
                 ss->cwnd += inc;
             } else {
@@ -1131,7 +1119,7 @@ static void scp_process_ack(struct scp_stream *ss,
         // Enter Fast Recovery 
         if (ss->dup_acks == 3 && !ss->fr_active) {
 
-            uint32_t flight = ss->snd_sent - ss->snd_una;
+            uint32_t flight = ss->snd_nxt - ss->snd_una;
             uint32_t half = flight / 2;
             uint32_t min_th = 2*mss;
 
@@ -1139,7 +1127,8 @@ static void scp_process_ack(struct scp_stream *ss,
             ss->cwnd = ss->ssthresh + 3*mss;
             ss->fr_active = 1;
 
-            scp_retransmit_gap(ss, ack, sack);
+            scp_retransmit_gap(ss, ack, sack); 
+            ss->last_gap_rexmit_ack = ack; 
 
             scp_timer_delete(&ss->t_retrans);
             scp_timer_create(&ss->t_retrans,
@@ -1229,8 +1218,8 @@ void scp_output_data(struct scp_stream *ss, struct scp_buf *sb,
 
     ss->packet_count++;
     ss->packet_bytes += frag_len;
-    if (SEQ_GT(end_seq, ss->snd_sent)) {
-        ss->snd_sent = end_seq;
+    if (SEQ_GT(end_seq, ss->snd_nxt)) {
+        ss->snd_nxt = end_seq;
     }
 
     if (pkt != small_buf)
@@ -1241,7 +1230,6 @@ void scp_output_data(struct scp_stream *ss, struct scp_buf *sb,
  * Output data:
  *  - ACK-only fast path if flags == ACK
  *  - Data path is hard-gated by min(cwnd, snd_wnd, flight)
- *  - Pacing is a soft time-based shaper inside the allowed send window
  */
 static int scp_output(struct scp_stream *ss, int flags)
 {
@@ -1250,25 +1238,12 @@ static int scp_output(struct scp_stream *ss, int flags)
         return 0;
     }
 
-    uint32_t flight_before = ss->snd_sent - ss->snd_una;
+    uint32_t flight_before = ss->snd_nxt - ss->snd_una;
 
     uint32_t mss = MTU - sizeof(struct scp_hdr);
     if (mss == 0) mss = 1;
 
     uint32_t now = scp_now_time();
-
-    // pacing on only when cwnd >= 4*mss
-    char pacing_on = (ss->pacing_rate > 0 && ss->cwnd >= 4 * mss);
-
-    // pacing: accumulate credit
-    uint32_t delta = now - ss->pacing_last_ts;
-    ss->pacing_last_ts = now;
-    if (pacing_on) {
-        ss->pacing_credit += ss->pacing_rate * delta;
-        uint32_t cap = ss->cwnd;   // pacing credit cap
-        if (ss->pacing_credit > cap)
-            ss->pacing_credit = cap;
-    }
 
     // effective send window
     uint32_t effective_win = ss->snd_wnd;
@@ -1312,10 +1287,6 @@ static int scp_output(struct scp_stream *ss, int flags)
             if (frag_len == 0)
                 goto out;
 
-            // pacing: check credit
-            if (pacing_on && ss->pacing_credit < frag_len)
-                goto out;
-
             uint32_t seg_seq = sb->seq + sent;
             uint32_t end_seq = seg_seq + frag_len;
 
@@ -1331,12 +1302,8 @@ static int scp_output(struct scp_stream *ss, int flags)
             sent         += frag_len;
             flight       += frag_len;
 
-            // pacing: consume credit
-            if (pacing_on)
-                ss->pacing_credit -= frag_len;
-
-            if (SEQ_GT(end_seq, ss->snd_sent))
-                ss->snd_sent = end_seq;
+            if (SEQ_GT(end_seq, ss->snd_nxt))
+                ss->snd_nxt = end_seq;
         }
     }
 
@@ -1362,9 +1329,9 @@ int scp_connect(int fd)
         return -1;
 
     ss->iss      = random32();
-    ss->snd_nxt  = ss->iss;
+    ss->snd_seq_q  = ss->iss;
     ss->snd_una  = ss->iss;
-    ss->snd_sent = ss->iss;
+    ss->snd_nxt = ss->iss;
 
     ss->state = SCP_SYN_SENT;
     ss->retry = 0;
@@ -1390,15 +1357,13 @@ int scp_send(int fd, void *buf, size_t len)
     if (!ss) return -1;
     if (ss->state != SCP_ESTABLISHED) return -1;
 
-    uint32_t flight = ss->snd_sent - ss->snd_una;
+    uint32_t flight = ss->snd_nxt - ss->snd_una;
 
     uint32_t win = ss->snd_wnd;
-    if (ss->cwnd < win) win = ss->cwnd;
-
     if (flight >= win) return -2;
 
-    uint32_t seq_base = ss->snd_nxt;
-    ss->snd_nxt += len;
+    uint32_t seq_base = ss->snd_seq_q;
+    ss->snd_seq_q += len;
 
     struct scp_buf *sb = scp_buf_alloc(sizeof(struct scp_buf) + sizeof(struct scp_hdr) + len);
     if (!sb) return -1;
@@ -1433,9 +1398,9 @@ static void scp_listen_like_process(struct scp_stream *ss,
         ss->rcv_nxt = ss->irs;
 
         ss->iss      = random32();
-        ss->snd_nxt  = ss->iss;
+        ss->snd_seq_q  = ss->iss;
         ss->snd_una  = ss->iss;
-        ss->snd_sent = ss->iss;
+        ss->snd_nxt = ss->iss;
 
         scp_output_connect_ack(ss);
 
@@ -1470,7 +1435,6 @@ static void scp_syn_sent_process(struct scp_stream *ss,
         scp_output_ack(ss);
 
         ss->state = SCP_ESTABLISHED;
-        ss->pacing_credit = ss->cwnd;
 
         scp_timer_delete(&ss->t_hs);
 
@@ -1495,7 +1459,6 @@ static void scp_syn_recv_process(struct scp_stream *ss,
 {
     if (sh->flags & SCP_FLAG_ACK) {
         ss->state = SCP_ESTABLISHED;
-        ss->pacing_credit = ss->cwnd;
 
         scp_timer_delete(&ss->t_hs);
 
@@ -1568,7 +1531,7 @@ static void scp_est_process(struct scp_stream *ss,
             ss->rto
         );
 
-        scp_output_fin(ss);
+        scp_output_fin_first(ss);
         scp_buf_free(sb);
         return;
     }
@@ -1748,7 +1711,7 @@ void scp_close(int fd)
             ss->rto
         );
 
-        scp_output_fin(ss);
+        scp_output_fin_first(ss);
         break;
 
     case SCP_SYN_SENT:

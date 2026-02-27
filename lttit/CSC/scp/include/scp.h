@@ -94,8 +94,8 @@ struct scp_stream {
     uint32_t src_fd;                    // local endpoint id
 
     uint32_t snd_una;                   // first unacknowledged seq
-    uint32_t snd_nxt;                   // next seq to enqueue
-    uint32_t snd_sent;                  // highest seq ever sent
+    uint32_t snd_seq_q;                 // next seq to enqueue
+    uint32_t snd_nxt;                   // highest seq ever sent
     uint32_t snd_wnd;                   // peer's advertised window
 
     uint32_t rcv_nxt;                   // next seq we expect
@@ -136,11 +136,8 @@ struct scp_stream {
     uint32_t ssthresh;                  // slow start threshold
     uint8_t dup_acks;                   // duplicate ACK counter
 
-    uint8_t fr_active; 
-
-    uint32_t pacing_rate;               // bytes per ms, estimated from acked/srtt
-    uint32_t pacing_credit;             // token bucket credit for pacing
-    uint32_t pacing_last_ts;            // last time we updated pacing_credit
+    uint8_t fr_active;
+    uint32_t last_gap_rexmit_ack;
 };
 
 /*
