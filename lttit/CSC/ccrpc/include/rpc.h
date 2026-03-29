@@ -1,20 +1,37 @@
-#ifndef _RPC_H
-#define _RPC_H
+#ifndef RPC_H
+#define RPC_H
 
 #include <stdint.h>
 #include <stddef.h>
 #include "link_list.h"
 
 typedef enum {
-    RPC_STATUS_OK = 0,
-    RPC_STATUS_METHOD_NOT_FOUND = 1,
-    RPC_STATUS_INVALID_PARAMS   = 2,
-    RPC_STATUS_INTERNAL_ERROR   = 3,
-    RPC_STATUS_TRANSPORT_ERROR  = 4,
-    RPC_STATUS_TIMEOUT          = 5,
+    RPC_STATUS_OK              = 0,
+    RPC_STATUS_INTERNAL_ERROR  = 1,
+    RPC_STATUS_TRANSPORT_ERROR = 2,
+    RPC_STATUS_TIMEOUT         = 3,
 } rpc_status_t;
 
-#define MTU 256
+typedef enum {
+    RPC_OP_OPEN  = 1,
+    RPC_OP_READ  = 2,
+    RPC_OP_WRITE = 3,
+    RPC_OP_CTL   = 4,
+    RPC_OP_CLOSE = 5,
+} rpc_op_t;
+
+#define RPC_MTU 4096
+#define RPC_NODE_NONE 0xFFFFFFFFu
+
+
+
+#define TLV_OP        0x01
+#define TLV_PATH      0x02
+#define TLV_ARGS      0x03
+#define TLV_DEST      0x04
+#define TLV_OUTPUT    0x10
+#define TLV_EXITCODE  0x11
+
 
 struct rpc_buf {
     struct list_node node;
@@ -27,12 +44,10 @@ struct rpc_reasm {
     size_t total_len;
 };
 
-// all is net(big) endian
 struct rpc_header {
     uint16_t status;
     uint32_t seq;
-    uint32_t msg_len;    /* payload length: method + tlv */
-    uint16_t method_len; /* length of method name in payload (request), 0 for response */
+    uint32_t msg_len;
 } __attribute__((packed));
 
 struct rpc_message {
@@ -48,43 +63,39 @@ struct rpc_transport_class {
     struct rpc_reasm reasm;
 };
 
-// TLV to param_struct
-typedef int (*rpc_param_parser_t)(
-        const uint8_t *tlv, size_t tlv_len,
-        void *param_out);
+struct rpc_request {
+    uint32_t op;
+    char    *path;
+    char    *args;
+    uint32_t dest_node;
+};
 
-// param_struct to result_struct
+struct rpc_response {
+    char    *output;
+    uint32_t exitcode;
+};
+
 typedef int (*rpc_handler_t)(
-        const void *param,
-        void *result);
+    const struct rpc_request  *in,
+    struct rpc_response       *out
+);
 
-// result_struct to TLV
-typedef int (*rpc_result_encoder_t)(
-        void *result_struct,
-        uint8_t *out_buf,
-        size_t *out_len);
+void rpc_init(uint8_t pending_cap);
 
-typedef void (*rpc_free_param_t)(void *param);
+struct rpc_transport_class *rpc_trans_class_create(
+    void *send, void *recv, void *close, void *user);
 
+void rpc_set_handler(rpc_handler_t h);
 
-int rpc_call_with_tlv(const char *name,
-                      const uint8_t *tlv, size_t tlv_len,
-                      uint8_t *out_tlv, size_t *out_len,
-                      uint32_t timeout_ms);
+int rpc_call(struct rpc_transport_class *t,
+             const struct rpc_request *in,
+             struct rpc_response *out,
+             uint32_t timeout_ms);
 
-void rpc_register_method(const char *name,
-                         rpc_param_parser_t parser,
-                         rpc_handler_t handler,
-                         rpc_result_encoder_t encoder,
-                         rpc_free_param_t free_param,
-                         rpc_free_param_t free_result);
-
-/* API */
-void rpc_init(uint8_t method_cap, uint8_t pending_cap, uint8_t transport_cap);
-struct rpc_transport_class *rpc_trans_class_create(void *send, void *recv, void *close, void *user);
-void rpc_bind_transport(const char *name, struct rpc_transport_class *t);
-struct rpc_transport_class *rpc_transport_lookup(const char *name);
 void rpc_on_data(struct rpc_transport_class *t,
                  const uint8_t *buf, size_t len);
+
+void rpc_free_request(struct rpc_request *r);
+void rpc_free_response(struct rpc_response *r);
 
 #endif
