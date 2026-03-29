@@ -42,6 +42,7 @@
  */
 
 #include "cbpf.h"
+#include "ccbpf.h"
 #include "common.h"
 #include <stdlib.h>
 #include <memory.h>
@@ -65,21 +66,20 @@ static inline uint32_t extract_long_raw(const void *p)
 #define EXTRACT_LONG(p)   extract_long_raw(p)
 
 
-
-#define CCBPF_STACK_SIZE 512
+#define CCBPF_STACK_SIZE (10*1024)
 uint8_t mem[CCBPF_STACK_SIZE];
-u_int ccbpf_vm_exec(struct ccbpf_program *prog,
+unsigned int ccbpf_vm_exec(struct ccbpf_program *prog,
                     struct bpf_insn *pc,
-                    u_char *p,
-                    u_int wirelen,
-                    u_int buflen)
+                    unsigned char *p,
+                    unsigned int wirelen,
+                    unsigned int buflen)
 {
     uint32_t A = 0, X = 0;
     int k;
     memset(mem, 0, sizeof(mem));
 
     if (pc == 0)
-        return (u_int)-1;
+        return (unsigned int)-1;
 
     --pc;
     for (;;) {
@@ -90,10 +90,10 @@ u_int ccbpf_vm_exec(struct ccbpf_program *prog,
             return 0;
 
         case BPF_RET | BPF_K:
-            return (u_int)pc->k;
+            return (unsigned int)pc->k;
 
         case BPF_RET | BPF_A:
-            return (u_int)A;
+            return (unsigned int)A;
 
         case BPF_LD | BPF_W | BPF_ABS:
             k = pc->k;
@@ -161,7 +161,7 @@ u_int ccbpf_vm_exec(struct ccbpf_program *prog,
             continue;
 
         case BPF_LD | BPF_MEM: {
-            size_t off = pc->k; 
+            size_t off = pc->k;
             if (off + sizeof(uint32_t) > CCBPF_STACK_SIZE)
                 return 0;
             memcpy(&A, &mem[off], sizeof(uint32_t));
@@ -169,7 +169,7 @@ u_int ccbpf_vm_exec(struct ccbpf_program *prog,
         }
 
         case BPF_LDX | BPF_MEM: {
-            size_t off = pc->k;  
+            size_t off = pc->k;
             if (off + sizeof(uint32_t) > CCBPF_STACK_SIZE)
                 return 0;
             memcpy(&X, &mem[off], sizeof(uint32_t));
@@ -177,7 +177,7 @@ u_int ccbpf_vm_exec(struct ccbpf_program *prog,
         }
 
         case BPF_ST: {
-            size_t off = pc->k; 
+            size_t off = pc->k;
             if (off + sizeof(uint32_t) > CCBPF_STACK_SIZE)
                 return 0;
             memcpy(&mem[off], &A, sizeof(uint32_t));
@@ -185,7 +185,7 @@ u_int ccbpf_vm_exec(struct ccbpf_program *prog,
         }
 
         case BPF_STX: {
-            size_t off = pc->k; 
+            size_t off = pc->k;
             if (off + sizeof(uint32_t) > CCBPF_STACK_SIZE)
                 return 0;
             memcpy(&mem[off], &X, sizeof(uint32_t));
@@ -308,98 +308,31 @@ u_int ccbpf_vm_exec(struct ccbpf_program *prog,
             A = X;
             continue;
 
-        case BPF_MISC | BPF_COP:
-            switch (pc->k) {
-            case NATIVE_NTOHL:
-                A = ntohl((uint32_t)A);
-                break;
-            case NATIVE_NTOHS:
-                A = ntohs((uint16_t)A);
-                break;
-            case NATIVE_PRINTF: {
-                uint64_t val = A;
-                uint64_t w   = X;  
-
-                switch (w) {
-                case 1:
-                    printf("%u", (unsigned)(val & 0xFF));
-                    break;
-                case 2:
-                    printf("%u", (unsigned)(val & 0xFFFF));
-                    break;
-                case 4:
-                    printf("%u", (unsigned)(val & 0xFFFFFFFF));
-                    break;
-                case 8:
-                    printf("%llu", (unsigned long long)val);
-                    break;
-                default:
-                    printf("%llu", (unsigned long long)val);
-                    break;
-                }
+        case BPF_MISC | BPF_COP: {
+            int func_id = pc->k;
+            struct native_entry *e =
+                hashmap_get(&native_table, (void*)(uintptr_t)func_id);
+            if (!e) {
                 A = 0;
-                break;
-            }   
-
-            case NATIVE_PRINT_STR: {
-                uint32_t id = (uint32_t)A;
-                if (id >= prog->string_count) {
-                    A = 0;
-                    break;
-                }
-
-                const char *s = prog->strings[id];
-                printf("%s", s);
-
-                A = 0;
-                break;
+                continue;
             }
 
-            case NATIVE_MAP_LOOKUP: {
-    			uint32_t map_id = (uint32_t)X;
-    			uint32_t key    = (uint32_t)A;
+            uint32_t a0 = A;
+            uint32_t a1 = X;
+            uint32_t a2 = 0;
+            uint32_t a3 = 0;
 
-			    if (map_id >= prog->map_count) {
-			        A = 0;
-			        break;
-			    }
+            if (e->argc > 2)
+                memcpy(&a2, &mem[0], sizeof(uint32_t));
+            if (e->argc > 3)
+                memcpy(&a3, &mem[4], sizeof(uint32_t));
 
-			    void *val_ptr = hashmap_get(&prog->maps[map_id],
-			                                (void *)(uintptr_t)key);
-			    uint32_t val = val_ptr ? (uint32_t)(uintptr_t)val_ptr : 0;
-
-			    A = (uint32_t)val;
-   			    break;
-			}
-
-            case NATIVE_MAP_UPDATE: {
-    			uint32_t map_id = (uint32_t)X;
-    			uint32_t key    = (uint32_t)A;
-
-			    if (map_id >= prog->map_count) {
-			        A = 0;
-			        break;
-			    }
-
-			    uint32_t value = 0;
-			    memcpy(&value, &mem[0], sizeof(uint32_t));
-			    hashmap_put(&prog->maps[map_id],
-			                (void *)(uintptr_t)key,
-			                (void *)(uintptr_t)value);
-
-			    A = 0;
-			    break;
-			}
-
-            default:
-                A = 0;
-                break;
-            }
+            A = e->fn(prog, a0, a1, a2, a3);
             continue;
+        }
         }
     }
 }
-
 
 
 /*

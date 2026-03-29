@@ -23,7 +23,7 @@ struct backend_layout default_bpf_layout(void)
 
 int temp_slot(const struct backend_layout *l, int t)
 {
-    return l->temp_base + t * sizeof(uint16_t);
+    return l->temp_base + t * sizeof(uint32_t);
 }
 
 int map_array_base(const struct backend_layout *l, int base)

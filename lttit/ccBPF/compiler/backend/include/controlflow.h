@@ -12,16 +12,19 @@ struct pending {
     int true_branch;
 };
 
+
+#define MAX_PENDING_JUMPS  128
+
 void lower_if_false(const struct backend_layout *l,
                     struct bpf_builder *b,
                     struct IR *ir,
                     struct pending **pj,
-                    int *pj_count, int *pj_cap);
+                    int *pj_count);
 
 void lower_goto(struct bpf_builder *b,
                 struct IR *ir,
                 struct pending **pj,
-                int *pj_count, int *pj_cap);
+                int *pj_count);
 
 void lower_label(int *label_pc,
                  struct bpf_builder *b,

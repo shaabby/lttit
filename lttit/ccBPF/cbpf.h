@@ -42,7 +42,6 @@
 #ifndef CBPF_H
 #define CBPF_H
 
-#include "bpf_types.h"
 #include <stdint.h>
 #include <stdio.h>
 #include "hashmap.h"
@@ -109,27 +108,10 @@
  * The instruction data structure.
  */
 struct bpf_insn {
-	u_short	code;
-	u_char 	jt;
-	u_char 	jf;
+	unsigned short	code;
+	unsigned char 	jt;
+	unsigned char 	jf;
 	long	k;
-};
-
-
-#define CCBPF_MAGIC 0x43434250  /* 'C' 'C' 'B' 'P' */
-
-struct CCBPF_Header {
-    uint32_t magic;
-    uint16_t version;
-    uint16_t flags;
-
-    uint32_t code_offset;
-    uint32_t code_size;
-
-    uint32_t data_offset;
-    uint32_t data_size;
-
-    uint32_t entry;
 };
 
 #define CCBPF_MAX_MAPS 8
@@ -153,18 +135,18 @@ struct ccbpf_program {
 /*
  * Macros for insn array initializers.
  */
-#define BPF_STMT(code, k) { (u_short)(code), 0, 0, k }
-#define BPF_JUMP(code, k, jt, jf) { (u_short)(code), jt, jf, k }
+#define BPF_STMT(code, k) { (unsigned short)(code), 0, 0, k }
+#define BPF_JUMP(code, k, jt, jf) { (unsigned short)(code), jt, jf, k }
 
 /*
  * Number of scratch memory words (for BPF_LD|BPF_MEM and BPF_ST).
  */
 #define BPF_MEMWORDS 64
 
-u_int ccbpf_vm_exec(struct ccbpf_program *prog,
+unsigned int ccbpf_vm_exec(struct ccbpf_program *prog,
                     struct bpf_insn *pc,
-                    u_char *p,
-                    u_int wirelen,
-                    u_int buflen);
+                    unsigned char *p,
+                    unsigned int wirelen,
+                    unsigned int buflen);
 	
 #endif

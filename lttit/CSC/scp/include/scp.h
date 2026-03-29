@@ -23,6 +23,8 @@ struct scp_timer {
 #define MIN_SEG 32
 #define SCP_RTO_MIN 100
 #define SCP_RTO_MAX 1000
+#define RETRANS_RECO_MAX 16
+#define RETRANS_GAP_MAX  8
 #define SCP_RECV_LIMIT 0xFFFF
 #define SEND_WIN_INIT 0xFFFF
 #define RECV_WIN_INIT     0xFFFF
@@ -77,7 +79,6 @@ enum {
     SCP_SYN_RECV,
     SCP_ESTABLISHED,
     SCP_FIN_WAIT,
-    SCP_CLOSE_WAIT,
     SCP_LAST_ACK,
 };
 
@@ -110,6 +111,7 @@ struct scp_stream {
     uint32_t srtt;                      // smoothed RTT
     uint32_t rttvar;                    // RTT variation
     uint32_t rto;                       // retransmission timeout
+    uint32_t rto_recovery;
 
     uint32_t rtt_ts;                    // timestamp of RTT measurement
     uint32_t rtt_seq;                   // seq being timed
