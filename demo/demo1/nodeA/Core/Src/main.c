@@ -55,7 +55,7 @@ void SystemClock_Config(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-#include "stm32f1xx_hal.h"
+#include "stm32f4xx_hal.h"
 #include "fs_port.h"
 #include "schedule.h"
 #include "sem.h"
@@ -164,7 +164,7 @@ static int nodeB_provider(void *ctx, void *data, size_t len)
     p = (uint32_t *)&send_buf[len + 4];
     *p = CLOSE;
 
-    HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_SET);
+    HAL_GPIO_WritePin(GPIOF, GPIO_PIN_9, GPIO_PIN_SET);
     HAL_UART_Transmit(&huart2, send_buf, sizeof(send_buf), HAL_MAX_DELAY);
 
     return 0;
@@ -279,8 +279,52 @@ int main(void)
     SystemClock_Config();
 
     MX_GPIO_Init();
+
+    /* ============================================================
+     * Stage 0: bare-metal register-level USART1 test.
+     * Bypasses HAL entirely. If "BARE\r\n" appears on serial,
+     * the hardware path (PA9 → CH340 → USB) is proven working.
+     * ============================================================ */
+    __HAL_RCC_USART1_CLK_ENABLE();
+    __HAL_RCC_GPIOA_CLK_ENABLE();
+
+    /* PA9 → AF7 (USART1_TX), push-pull, very-high speed */
+    GPIOA->MODER   = (GPIOA->MODER   & ~(3U << (9*2))) | (2U << (9*2));
+    GPIOA->OSPEEDR =  GPIOA->OSPEEDR | (3U << (9*2));
+    GPIOA->AFR[1]  = (GPIOA->AFR[1]  & ~(0xFU << 4))   | (7U << 4);
+
+    /* 115200 baud @ 16 MHz HSI, OVER8=0: USARTDIV=8.68 → BRR=0x008B */
+    USART1->BRR = 0x008BU;
+    USART1->CR1 = USART_CR1_UE | USART_CR1_TE;
+
+    {
+        const char *msg = "BARE\r\n";
+        for (const char *p = msg; *p; p++) {
+            while (!(USART1->SR & USART_SR_TXE)) {}
+            USART1->DR = (uint16_t)*p;
+        }
+        while (!(USART1->SR & USART_SR_TC)) {}
+    }
+
+    /* Red LED on briefly = bare-metal UART done */
+    HAL_GPIO_WritePin(GPIOF, GPIO_PIN_9, GPIO_PIN_RESET);
+
+    /* Disable USART1 before HAL re-inits it properly */
+    USART1->CR1 = 0;
+
+    /* ============================================================
+     * Stage 1: normal HAL UART init + boot banner
+     * ============================================================ */
     MX_USART1_UART_Init();
     MX_USART2_UART_Init();
+
+    uint8_t test_str[] = "MAIN OK\r\n";
+    HAL_UART_Transmit(&huart1, test_str, sizeof(test_str) - 1, 500);
+    HAL_UART_Transmit(&huart2, test_str, sizeof(test_str) - 1, 500);
+
+    /* Green LED on = past UART init, entering scheduler */
+    HAL_GPIO_WritePin(GPIOF, GPIO_PIN_10, GPIO_PIN_RESET);
+    HAL_GPIO_WritePin(GPIOF, GPIO_PIN_9, GPIO_PIN_SET);
 
     scheduler_init();
     APP();
@@ -535,16 +579,18 @@ void SystemClock_Config(void)
   RCC_OscInitTypeDef RCC_OscInitStruct = {0};
   RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
 
+  /** Configure the main internal regulator output voltage
+  */
+  __HAL_RCC_PWR_CLK_ENABLE();
+  __HAL_PWR_VOLTAGESCALING_CONFIG(PWR_REGULATOR_VOLTAGE_SCALE1);
+
   /** Initializes the RCC Oscillators according to the specified parameters
   * in the RCC_OscInitTypeDef structure.
   */
-  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSE;
-  RCC_OscInitStruct.HSEState = RCC_HSE_ON;
-  RCC_OscInitStruct.HSEPredivValue = RCC_HSE_PREDIV_DIV1;
+  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI;
   RCC_OscInitStruct.HSIState = RCC_HSI_ON;
-  RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
-  RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSE;
-  RCC_OscInitStruct.PLL.PLLMUL = RCC_PLL_MUL9;
+  RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
+  RCC_OscInitStruct.PLL.PLLState = RCC_PLL_NONE;
   if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
   {
     Error_Handler();
@@ -554,12 +600,12 @@ void SystemClock_Config(void)
   */
   RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
                               |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2;
-  RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
+  RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_HSI;
   RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
-  RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV2;
+  RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV1;
   RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
 
-  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_2) != HAL_OK)
+  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_0) != HAL_OK)
   {
     Error_Handler();
   }

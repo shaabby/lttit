@@ -35,11 +35,28 @@ static int fs_bd_write(void *ctx, uint32_t block,
 
 static int fs_bd_erase(void *ctx, uint32_t block) {
     (void)ctx;
-    uint32_t page_addr = FS_FLASH_BASE + block * FS_BLOCK_SIZE;
+    uint32_t addr = FS_FLASH_BASE + block * FS_BLOCK_SIZE;
+
+    /* F4 Flash sector mapping based on address */
+    uint32_t sector;
+    if (addr < 0x08004000)      sector = 0;  /* 16KB */
+    else if (addr < 0x08008000) sector = 1;  /* 16KB */
+    else if (addr < 0x0800C000) sector = 2;  /* 16KB */
+    else if (addr < 0x08010000) sector = 3;  /* 16KB */
+    else if (addr < 0x08020000) sector = 4;  /* 64KB */
+    else if (addr < 0x08040000) sector = 5;  /* 128KB */
+    else if (addr < 0x08060000) sector = 6;  /* 128KB */
+    else if (addr < 0x08080000) sector = 7;  /* 128KB */
+    else if (addr < 0x080A0000) sector = 8;  /* 128KB */
+    else if (addr < 0x080C0000) sector = 9;  /* 128KB */
+    else if (addr < 0x080E0000) sector = 10; /* 128KB */
+    else                          sector = 11; /* 128KB (our FS area) */
+
     FLASH_EraseInitTypeDef ei = {0};
-    ei.TypeErase   = FLASH_TYPEERASE_PAGES;
-    ei.PageAddress = page_addr;
-    ei.NbPages     = 1;
+    ei.TypeErase = FLASH_TYPEERASE_SECTORS;
+    ei.Sector = sector;
+    ei.NbSectors = 1;
+    ei.VoltageRange = FLASH_VOLTAGE_RANGE_3;
     uint32_t err = 0;
     HAL_FLASH_Unlock();
     HAL_StatusTypeDef st = HAL_FLASHEx_Erase(&ei, &err);

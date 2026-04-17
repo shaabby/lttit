@@ -1,5 +1,15 @@
 /*
  * Copyright (c) 1990, 1991, 1993
+ *
+ * NOTE: u_short, u_char, u_int are legacy BSD types.
+ * Provided here for bare-metal ARM toolchain compatibility.
+ */
+#include <stdint.h>
+typedef uint16_t u_short;
+typedef uint8_t  u_char;
+typedef uint32_t u_int;
+
+/*
  *	The Regents of the University of California.  All rights reserved.
  *
  * This code is derived from the Stanford/CMU enet packet filter,
