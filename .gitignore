@@ -35,9 +35,9 @@ Core/Src/*.bak
 # -----------------------------
 *.o
 *.obj
-*.elf
+# *.elf
 *.bin
-*.hex
+# *.hex
 *.map
 *.lst
 *.d
